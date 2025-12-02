@@ -1,0 +1,110 @@
+Categories:
+  - Internet
+  - Storage
+
+License: GPL-3.0-or-later
+
+AuthorName: Reimen Torres
+AuthorEmail: <reimentorresl@gmail.com>
+AuthorWebSite: https://github.com/reimen-cpu
+
+WebSite: <https://github.com/reimen-cpu/telegram-cloud-android>
+SourceCode: <https://github.com/reimen-cpu/telegram-cloud-android>
+IssueTracker: <https://github.com/reimen-cpu/telegram-cloud-android/issues>
+
+Translation: <https://github.com/reimen-cpu/telegram-cloud-android>
+
+AntiFeatures:
+  - NoSourceSince
+  - NonFreeDep
+
+Summary: Gestiona tus archivos en la nube usando Telegram como backend. Tu nube, tus reglas.
+
+Description: |
+  <p>Telegram Cloud es una aplicación Android para gestionar archivos en la nube usando Telegram como backend. Ofrece control total sobre tus datos.</p>
+  
+  <p><b>Características principales:</b></p>
+  <ul>
+    <li>📤 Subida y descarga de archivos con interfaz nativa de Android</li>
+    <li>🖼️ Galería de medios con sincronización automática de fotos y videos</li>
+    <li>🔐 Backups cifrados con contraseña</li>
+    <li>🔗 Generación de archivos .link para compartir múltiples archivos fácilmente</li>
+    <li>📱 Interfaz moderna construida con Jetpack Compose y Material Design 3</li>
+    <li>🔄 Sincronización en segundo plano con WorkManager</li>
+    <li>🔍 Búsqueda y filtrado de archivos</li>
+    <li>💾 Base de datos cifrada con SQLCipher</li>
+  </ul>
+  
+  <p>La aplicación utiliza la API de Telegram Bot para almacenar archivos en tus propios canales/chats de Telegram, dándote control total sobre tus datos.</p>
+  
+  <p><b>Requisitos:</b></p>
+  <ul>
+    <li>Bot de Telegram configurado con permisos apropiados</li>
+    <li>Canal de Telegram (opcional, para almacenamiento)</li>
+  </ul>
+  
+  <p>Esta aplicación no depende de servicios propietarios y todas sus dependencias son de código abierto.</p>
+
+RepoType: git
+
+Repo: https://github.com/reimen-cpu/telegram-cloud-android.git
+
+Binaries: https://github.com/reimen-cpu/telegram-cloud-android/releases
+
+Builds:
+  - versionName: 1.0.0
+    versionCode: 1
+    commit: <tag-o-commit-inicial>
+    gradle:
+      - yes
+    scandelete:
+      - .gradle
+      - .idea
+      - build
+      - local.properties
+      - keystore
+      - '*.iml'
+    subdir: android
+    buildjni:
+      - telegram-cloud-cpp
+    submodules: false
+    init:
+      - >-
+        cd telegram-cloud-cpp && git submodule update --init --recursive
+    build:
+      - >-
+        ./gradlew assembleRelease
+    output: android/app/build/outputs/apk/release/app-release-unsigned.apk
+    srclibs:
+      - >-
+        telegram-cloud-cpp@<commit-hash>
+        |Android.mk
+        |LOCAL_PATH := $(call my-dir)
+        |include $(CLEAR_VARS)
+        |LOCAL_MODULE := telegramcloud_core
+        |LOCAL_SRC_FILES := $(LOCAL_PATH)/../libs/$(TARGET_ARCH_ABI)/libtelegramcloud_core.so
+        |include $(PREBUILT_SHARED_LIBRARY)
+
+AutoUpdateMode: None
+
+UpdateCheckMode: None
+
+CurrentVersion: 1.0.0
+CurrentVersionCode: 1
+
+RequiresRoot: no
+
+Preferences:
+  - title: Bot Token
+    summary: Token del bot de Telegram
+    key: bot_token
+    inputType: text
+  - title: Channel ID
+    summary: ID del canal donde se almacenarán los archivos
+    key: channel_id
+    inputType: text
+  - title: Chat ID
+    summary: ID del chat adicional (opcional)
+    key: chat_id
+    inputType: text
+
