@@ -1,0 +1,6 @@
+[submodule "telegram-cloud-cpp"]
+	path = telegram-cloud-cpp
+	url = https://github.com/reimen-cpu/telegram-cloud-cpp.git
+[submodule "telegram-cloud-android"]
+	path = telegram-cloud-android
+	url = https://github.com/reimen-cpu/telegram-cloud-android.git
