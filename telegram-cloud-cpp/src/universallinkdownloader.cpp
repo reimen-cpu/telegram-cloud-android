@@ -13,8 +13,8 @@
 
 namespace TelegramCloud {
 
-// Funciones auxiliares
-static std::string base64Decode(const std::string& data) {
+// Funciones auxiliares (no usadas actualmente)
+[[maybe_unused]] static std::string base64Decode(const std::string& data) {
     const std::string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string result;
     std::vector<int> T(256, -1);

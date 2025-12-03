@@ -183,7 +183,7 @@ class BackupManager(
             )
             Log.i(TAG, "restoreBackup: Config saved")
 
-            // Migrate desktop database to Android format
+            // Detect backup type and restore accordingly
             val tempDbPath = File(cacheDir, "temp_restore.db")
             tempDbPath.parentFile?.mkdirs()
             FileOutputStream(tempDbPath).use { it.write(dbBytes) }
@@ -193,8 +193,29 @@ class BackupManager(
             val dbEncryptionKey = envMap["DB_ENCRYPTION_KEY"]
             Log.i(TAG, "restoreBackup: DB_ENCRYPTION_KEY present=${dbEncryptionKey != null}")
             
-            // Migrate data from desktop format to Android format
-            migrateDesktopDatabase(tempDbPath, context.getDatabasePath("cloud.db"), channel, dbEncryptionKey)
+            // Detect backup type
+            val backupType = detectBackupType(tempDbPath, dbEncryptionKey)
+            Log.i(TAG, "restoreBackup: Detected backup type: $backupType")
+            
+            val targetDb = context.getDatabasePath("cloud.db")
+            
+            when (backupType) {
+                "android" -> {
+                    // Android backup: copy database and let Room apply migrations
+                    Log.i(TAG, "restoreBackup: Restoring Android backup")
+                    restoreAndroidBackup(tempDbPath, targetDb, dbEncryptionKey)
+                }
+                "desktop" -> {
+                    // Desktop backup: migrate data to Android format
+                    Log.i(TAG, "restoreBackup: Migrating desktop backup")
+                    migrateDesktopDatabase(tempDbPath, targetDb, channel, dbEncryptionKey)
+                }
+                else -> {
+                    // Unknown type: try desktop migration as fallback
+                    Log.w(TAG, "restoreBackup: Unknown backup type, attempting desktop migration")
+                    migrateDesktopDatabase(tempDbPath, targetDb, channel, dbEncryptionKey)
+                }
+            }
             
             tempDbPath.delete()
             workDir.deleteRecursively()
@@ -205,6 +226,265 @@ class BackupManager(
             
             Log.i(TAG, "restoreBackup: Complete!")
         }
+
+    /**
+     * Detects the type of backup database (Android or Desktop) by checking for characteristic tables.
+     * Returns "android" if cloud_files and room_master_table exist, "desktop" if files table exists, null otherwise.
+     */
+    private suspend fun detectBackupType(sourceDb: File, dbEncryptionKey: String? = null): String? = withContext(Dispatchers.IO) {
+        try {
+            val tables = mutableListOf<String>()
+            
+            if (dbEncryptionKey != null) {
+                // Encrypted database - use SQLCipher
+                System.loadLibrary("sqlcipher")
+                var cipherDb: net.zetetic.database.sqlcipher.SQLiteDatabase? = null
+                
+                // Try to open with default SQLCipher settings
+                try {
+                    cipherDb = net.zetetic.database.sqlcipher.SQLiteDatabase.openDatabase(
+                        sourceDb.absolutePath,
+                        dbEncryptionKey,
+                        null,
+                        net.zetetic.database.sqlcipher.SQLiteDatabase.OPEN_READONLY,
+                        null,
+                        null
+                    )
+                    
+                    val tablesCursor = cipherDb.rawQuery(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+                        null
+                    )
+                    while (tablesCursor.moveToNext()) {
+                        tables.add(tablesCursor.getString(0))
+                    }
+                    tablesCursor.close()
+                    cipherDb.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "detectBackupType: Failed to open encrypted DB for detection: ${e.message}")
+                    cipherDb?.close()
+                    return@withContext null
+                }
+            } else {
+                // Unencrypted database
+                val conn = android.database.sqlite.SQLiteDatabase.openDatabase(
+                    sourceDb.absolutePath,
+                    null,
+                    android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+                )
+                
+                val tablesCursor = conn.rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+                    null
+                )
+                while (tablesCursor.moveToNext()) {
+                    tables.add(tablesCursor.getString(0))
+                }
+                tablesCursor.close()
+                conn.close()
+            }
+            
+            Log.i(TAG, "detectBackupType: Found tables: $tables")
+            
+            // Android backup: has cloud_files and room_master_table
+            if (tables.contains("cloud_files") && tables.contains("room_master_table")) {
+                Log.i(TAG, "detectBackupType: Detected Android backup")
+                return@withContext "android"
+            }
+            
+            // Desktop backup: has files table
+            if (tables.contains("files")) {
+                Log.i(TAG, "detectBackupType: Detected Desktop backup")
+                return@withContext "desktop"
+            }
+            
+            Log.w(TAG, "detectBackupType: Unknown backup type")
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e(TAG, "detectBackupType: Error detecting backup type", e)
+            return@withContext null
+        }
+    }
+
+    /**
+     * Restores an Android backup by copying the database and ensuring Room can apply migrations.
+     * For encrypted databases, uses Room DAO directly instead of copying.
+     */
+    private suspend fun restoreAndroidBackup(sourceDb: File, targetDb: File, dbEncryptionKey: String? = null) = withContext(Dispatchers.IO) {
+        Log.i(TAG, "restoreAndroidBackup: Starting Android backup restoration")
+        
+        try {
+            if (dbEncryptionKey != null) {
+                // Encrypted database: use Room DAO to migrate data
+                Log.i(TAG, "restoreAndroidBackup: Encrypted database, using Room DAO migration")
+                System.loadLibrary("sqlcipher")
+                
+                // Try to open encrypted source database
+                var cipherDb: net.zetetic.database.sqlcipher.SQLiteDatabase? = null
+                val configs = listOf(
+                    mapOf("key" to dbEncryptionKey, "postKeyPragmas" to listOf(
+                        "PRAGMA cipher_page_size = 4096",
+                        "PRAGMA kdf_iter = 256000",
+                        "PRAGMA cipher_hmac_algorithm = HMAC_SHA1",
+                        "PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA1"
+                    )),
+                    mapOf("key" to dbEncryptionKey, "postKeyPragmas" to listOf<String>())
+                )
+                
+                for (config in configs) {
+                    try {
+                        val keyToUse = config["key"] as String
+                        @Suppress("UNCHECKED_CAST")
+                        val postKeyPragmas = config["postKeyPragmas"] as List<String>
+                        
+                        val hook = object : net.zetetic.database.sqlcipher.SQLiteDatabaseHook {
+                            override fun preKey(connection: net.zetetic.database.sqlcipher.SQLiteConnection) {}
+                            override fun postKey(connection: net.zetetic.database.sqlcipher.SQLiteConnection) {
+                                for (pragma in postKeyPragmas) {
+                                    try {
+                                        connection.execute(pragma, null, null)
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "restoreAndroidBackup: postKey failed $pragma: ${e.message}")
+                                    }
+                                }
+                            }
+                        }
+                        
+                        cipherDb = net.zetetic.database.sqlcipher.SQLiteDatabase.openDatabase(
+                            sourceDb.absolutePath,
+                            keyToUse,
+                            null,
+                            net.zetetic.database.sqlcipher.SQLiteDatabase.OPEN_READONLY,
+                            null,
+                            hook
+                        )
+                        Log.i(TAG, "restoreAndroidBackup: Successfully opened encrypted database")
+                        break
+                    } catch (e: Exception) {
+                        Log.w(TAG, "restoreAndroidBackup: Failed to open with config: ${e.message}")
+                    }
+                }
+                
+                if (cipherDb == null) {
+                    throw Exception("Failed to open encrypted Android backup database")
+                }
+                
+                // Clear existing Room data
+                database.cloudFileDao().clear()
+                database.uploadTaskDao().clear()
+                database.downloadTaskDao().clear()
+                database.galleryMediaDao().clear()
+                
+                // Migrate data from encrypted Android backup using Room DAO
+                migrateFromAndroidBackup(cipherDb)
+                cipherDb.close()
+                
+                Log.i(TAG, "restoreAndroidBackup: Encrypted Android backup restoration complete")
+                return@withContext
+            }
+            
+            // Unencrypted database: copy and set version
+            // Close Room database connection if open
+            database.close()
+            
+            // Delete existing database files
+            targetDb.delete()
+            File(targetDb.absolutePath + "-shm").delete()
+            File(targetDb.absolutePath + "-wal").delete()
+            targetDb.parentFile?.mkdirs()
+            
+            // Copy the backup database
+            sourceDb.copyTo(targetDb, overwrite = true)
+            Log.i(TAG, "restoreAndroidBackup: Database copied to ${targetDb.absolutePath}")
+            
+            // Open the copied database to check and set version
+            val conn = android.database.sqlite.SQLiteDatabase.openDatabase(
+                targetDb.absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+            )
+            
+            // Check current version
+            val versionCursor = conn.rawQuery("PRAGMA user_version", null)
+            var currentVersion = 0
+            if (versionCursor.moveToFirst()) {
+                currentVersion = versionCursor.getInt(0)
+            }
+            versionCursor.close()
+            
+            Log.i(TAG, "restoreAndroidBackup: Current database version: $currentVersion")
+            
+            // If version is 0 or not set, detect from schema or set to 1
+            if (currentVersion == 0) {
+                // Try to detect version by checking which columns exist
+                var detectedVersion = 1
+                
+                // Check for migration 4_5 columns in upload_tasks
+                val uploadColumnsCursor = conn.rawQuery(
+                    "PRAGMA table_info(upload_tasks)",
+                    null
+                )
+                val uploadColumns = mutableSetOf<String>()
+                while (uploadColumnsCursor.moveToNext()) {
+                    val colName = uploadColumnsCursor.getString(1)
+                    uploadColumns.add(colName)
+                }
+                uploadColumnsCursor.close()
+                
+                if (uploadColumns.contains("file_id") && 
+                    uploadColumns.contains("completed_chunks_json") && 
+                    uploadColumns.contains("token_offset")) {
+                    detectedVersion = 5
+                } else if (uploadColumns.isNotEmpty()) {
+                    // Has upload_tasks table but not migration 4_5 columns, check for other migrations
+                    val galleryColumnsCursor = conn.rawQuery(
+                        "PRAGMA table_info(gallery_media)",
+                        null
+                    )
+                    val galleryColumns = mutableSetOf<String>()
+                    while (galleryColumnsCursor.moveToNext()) {
+                        val colName = galleryColumnsCursor.getString(1)
+                        galleryColumns.add(colName)
+                    }
+                    galleryColumnsCursor.close()
+                    
+                    if (galleryColumns.contains("telegram_file_unique_id") && 
+                        galleryColumns.contains("telegram_uploader_tokens")) {
+                        detectedVersion = 4
+                    } else if (galleryColumns.isNotEmpty()) {
+                        detectedVersion = 3
+                    } else {
+                        // Check for uploader_tokens in cloud_files
+                        val cloudColumnsCursor = conn.rawQuery(
+                            "PRAGMA table_info(cloud_files)",
+                            null
+                        )
+                        val cloudColumns = mutableSetOf<String>()
+                        while (cloudColumnsCursor.moveToNext()) {
+                            val colName = cloudColumnsCursor.getString(1)
+                            cloudColumns.add(colName)
+                        }
+                        cloudColumnsCursor.close()
+                        
+                        if (cloudColumns.contains("uploader_tokens")) {
+                            detectedVersion = 2
+                        }
+                    }
+                }
+                
+                Log.i(TAG, "restoreAndroidBackup: Detected version: $detectedVersion")
+                conn.execSQL("PRAGMA user_version = $detectedVersion")
+                Log.i(TAG, "restoreAndroidBackup: Set user_version to $detectedVersion (Room will apply migrations if needed)")
+            }
+            
+            conn.close()
+            
+            Log.i(TAG, "restoreAndroidBackup: Android backup restoration complete")
+        } catch (e: Exception) {
+            Log.e(TAG, "restoreAndroidBackup: Error restoring Android backup", e)
+            throw e
+        }
+    }
 
     /**
      * Migrates a desktop SQLite database to Android Room format.
@@ -371,7 +651,7 @@ class BackupManager(
                 }
                 
                 // Migrate data using Room DAO directly
-                migrateFromSQLCipher(cipherDb!!, targetDb, channelId)
+                migrateFromSQLCipher(cipherDb, targetDb, channelId)
                 return
             } else {
                 // Regular SQLite database
@@ -407,6 +687,7 @@ class BackupManager(
                 )
             """.trimIndent())
             
+            // Create upload_tasks table with all columns from version 5 (includes migration 4_5 columns)
             targetConn.execSQL("""
                 CREATE TABLE IF NOT EXISTS upload_tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -416,10 +697,14 @@ class BackupManager(
                     status TEXT NOT NULL,
                     progress INTEGER NOT NULL,
                     error TEXT,
-                    created_at INTEGER NOT NULL
+                    created_at INTEGER NOT NULL,
+                    file_id TEXT DEFAULT NULL,
+                    completed_chunks_json TEXT DEFAULT NULL,
+                    token_offset INTEGER NOT NULL DEFAULT 0
                 )
             """.trimIndent())
             
+            // Create download_tasks table with all columns from version 5 (includes migration 4_5 columns)
             targetConn.execSQL("""
                 CREATE TABLE IF NOT EXISTS download_tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -428,9 +713,38 @@ class BackupManager(
                     status TEXT NOT NULL,
                     progress INTEGER NOT NULL,
                     error TEXT,
-                    created_at INTEGER NOT NULL
+                    created_at INTEGER NOT NULL,
+                    completed_chunks_json TEXT DEFAULT NULL,
+                    chunk_file_ids TEXT DEFAULT NULL,
+                    temp_chunk_dir TEXT DEFAULT NULL,
+                    total_chunks INTEGER NOT NULL DEFAULT 0
                 )
             """.trimIndent())
+            
+            // Create gallery_media table with all columns from version 5 (includes migrations 2_3 and 3_4)
+            targetConn.execSQL("""
+                CREATE TABLE IF NOT EXISTS gallery_media (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    local_path TEXT NOT NULL,
+                    filename TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    date_taken INTEGER NOT NULL,
+                    date_modified INTEGER NOT NULL,
+                    width INTEGER NOT NULL DEFAULT 0,
+                    height INTEGER NOT NULL DEFAULT 0,
+                    duration_ms INTEGER NOT NULL DEFAULT 0,
+                    thumbnail_path TEXT,
+                    is_synced INTEGER NOT NULL DEFAULT 0,
+                    telegram_file_id TEXT,
+                    telegram_message_id INTEGER,
+                    telegram_file_unique_id TEXT,
+                    telegram_uploader_tokens TEXT,
+                    sync_error TEXT,
+                    last_sync_attempt INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            targetConn.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_gallery_media_local_path ON gallery_media (local_path)")
             
             // Room metadata table
             targetConn.execSQL("""
@@ -440,6 +754,10 @@ class BackupManager(
                 )
             """.trimIndent())
             targetConn.execSQL("INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES(42, 'placeholder')")
+            
+            // Set database version to 5 (current version) so Room knows migrations are already applied
+            targetConn.execSQL("PRAGMA user_version = 5")
+            Log.i(TAG, "migrateDesktopDatabase: Set user_version to 5")
             
             // Check what tables exist in source
             val tablesCursor = sourceConn.rawQuery(
@@ -567,6 +885,233 @@ class BackupManager(
     }
     
     /**
+     * Migrates data from an encrypted Android backup database to Room.
+     * Assumes source database already has Android Room schema (cloud_files, upload_tasks, etc.).
+     */
+    private suspend fun migrateFromAndroidBackup(
+        sourceConn: net.zetetic.database.sqlcipher.SQLiteDatabase
+    ) = withContext(Dispatchers.IO) {
+        Log.i(TAG, "migrateFromAndroidBackup: Starting Android backup migration")
+        
+        try {
+            // Check what tables exist in source
+            val tablesCursor = sourceConn.rawQuery(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'room_master_table'",
+                null
+            )
+            val tables = mutableListOf<String>()
+            while (tablesCursor.moveToNext()) {
+                tables.add(tablesCursor.getString(0))
+            }
+            tablesCursor.close()
+            Log.i(TAG, "migrateFromAndroidBackup: Source tables: $tables")
+            
+            var migratedCount = 0
+            
+            // Migrate cloud_files table
+            if (tables.contains("cloud_files")) {
+                val cursor = sourceConn.rawQuery(
+                    "SELECT id, telegram_message_id, file_id, file_unique_id, file_name, mime_type, size_bytes, uploaded_at, caption, share_link, checksum, uploader_tokens FROM cloud_files",
+                    null
+                )
+                
+                Log.i(TAG, "migrateFromAndroidBackup: Found ${cursor.count} files in Android backup")
+                
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val telegramMessageId = cursor.getLong(1)
+                    val fileId = cursor.getString(2) ?: continue
+                    val fileUniqueId = cursor.getString(3)
+                    val fileName = cursor.getString(4) ?: "unknown"
+                    val mimeType = cursor.getString(5)
+                    val sizeBytes = cursor.getLong(6)
+                    val uploadedAt = cursor.getLong(7)
+                    val caption = cursor.getString(8)
+                    val shareLink = cursor.getString(9)
+                    val checksum = cursor.getString(10)
+                    val uploaderTokens = cursor.getString(11)
+                    
+                    // Insert using Room DAO
+                    database.cloudFileDao().insert(
+                        com.telegram.cloud.data.local.CloudFileEntity(
+                            id = id,
+                            telegramMessageId = telegramMessageId,
+                            fileId = fileId,
+                            fileUniqueId = fileUniqueId,
+                            fileName = fileName,
+                            mimeType = mimeType,
+                            sizeBytes = sizeBytes,
+                            uploadedAt = uploadedAt,
+                            caption = caption,
+                            shareLink = shareLink,
+                            checksum = checksum,
+                            uploaderTokens = uploaderTokens
+                        )
+                    )
+                    migratedCount++
+                }
+                cursor.close()
+            }
+            
+            // Migrate upload_tasks table
+            if (tables.contains("upload_tasks")) {
+                val cursor = sourceConn.rawQuery(
+                    "SELECT id, uri, display_name, size_bytes, status, progress, error, created_at, file_id, completed_chunks_json, token_offset FROM upload_tasks",
+                    null
+                )
+                
+                Log.i(TAG, "migrateFromAndroidBackup: Found ${cursor.count} upload tasks")
+                
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val uri = cursor.getString(1) ?: continue
+                    val displayName = cursor.getString(2) ?: "unknown"
+                    val sizeBytes = cursor.getLong(3)
+                    val statusStr = cursor.getString(4) ?: "QUEUED"
+                    val progress = cursor.getInt(5)
+                    val error = cursor.getString(6)
+                    val createdAt = cursor.getLong(7)
+                    val fileId = cursor.getString(8)
+                    val completedChunksJson = cursor.getString(9)
+                    val tokenOffset = cursor.getInt(10)
+                    
+                    val status = try {
+                        com.telegram.cloud.data.local.UploadStatus.valueOf(statusStr)
+                    } catch (e: Exception) {
+                        com.telegram.cloud.data.local.UploadStatus.QUEUED
+                    }
+                    
+                    database.uploadTaskDao().upsert(
+                        com.telegram.cloud.data.local.UploadTaskEntity(
+                            id = id,
+                            uri = uri,
+                            displayName = displayName,
+                            sizeBytes = sizeBytes,
+                            status = status,
+                            progress = progress,
+                            error = error,
+                            createdAt = createdAt,
+                            fileId = fileId,
+                            completedChunksJson = completedChunksJson,
+                            tokenOffset = tokenOffset
+                        )
+                    )
+                }
+                cursor.close()
+            }
+            
+            // Migrate download_tasks table
+            if (tables.contains("download_tasks")) {
+                val cursor = sourceConn.rawQuery(
+                    "SELECT id, file_id, target_path, status, progress, error, created_at, completed_chunks_json, chunk_file_ids, temp_chunk_dir, total_chunks FROM download_tasks",
+                    null
+                )
+                
+                Log.i(TAG, "migrateFromAndroidBackup: Found ${cursor.count} download tasks")
+                
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val fileId = cursor.getString(1) ?: continue
+                    val targetPath = cursor.getString(2) ?: continue
+                    val statusStr = cursor.getString(3) ?: "QUEUED"
+                    val progress = cursor.getInt(4)
+                    val error = cursor.getString(5)
+                    val createdAt = cursor.getLong(6)
+                    val completedChunksJson = cursor.getString(7)
+                    val chunkFileIds = cursor.getString(8)
+                    val tempChunkDir = cursor.getString(9)
+                    val totalChunks = cursor.getInt(10)
+                    
+                    val status = try {
+                        com.telegram.cloud.data.local.DownloadStatus.valueOf(statusStr)
+                    } catch (e: Exception) {
+                        com.telegram.cloud.data.local.DownloadStatus.QUEUED
+                    }
+                    
+                    database.downloadTaskDao().upsert(
+                        com.telegram.cloud.data.local.DownloadTaskEntity(
+                            id = id,
+                            fileId = fileId,
+                            targetPath = targetPath,
+                            status = status,
+                            progress = progress,
+                            error = error,
+                            createdAt = createdAt,
+                            completedChunksJson = completedChunksJson,
+                            chunkFileIds = chunkFileIds,
+                            tempChunkDir = tempChunkDir,
+                            totalChunks = totalChunks
+                        )
+                    )
+                }
+                cursor.close()
+            }
+            
+            // Migrate gallery_media table if it exists
+            if (tables.contains("gallery_media")) {
+                val cursor = sourceConn.rawQuery(
+                    "SELECT id, local_path, filename, mime_type, size_bytes, date_taken, date_modified, width, height, duration_ms, thumbnail_path, is_synced, telegram_file_id, telegram_message_id, telegram_file_unique_id, telegram_uploader_tokens, sync_error, last_sync_attempt FROM gallery_media",
+                    null
+                )
+                
+                Log.i(TAG, "migrateFromAndroidBackup: Found ${cursor.count} gallery media items")
+                
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val localPath = cursor.getString(1) ?: continue
+                    val filename = cursor.getString(2) ?: "unknown"
+                    val mimeType = cursor.getString(3) ?: "application/octet-stream"
+                    val sizeBytes = cursor.getLong(4)
+                    val dateTaken = cursor.getLong(5)
+                    val dateModified = cursor.getLong(6)
+                    val width = cursor.getInt(7)
+                    val height = cursor.getInt(8)
+                    val durationMs = cursor.getLong(9)
+                    val thumbnailPath = cursor.getString(10)
+                    val isSynced = cursor.getInt(11) != 0
+                    val telegramFileId = cursor.getString(12)
+                    val telegramMessageIdLong = cursor.getLong(13)
+                    val telegramFileUniqueId = cursor.getString(14)
+                    val telegramUploaderTokens = cursor.getString(15)
+                    val syncError = cursor.getString(16)
+                    val lastSyncAttempt = cursor.getLong(17)
+                    
+                    val telegramMessageId = if (telegramMessageIdLong > 0) telegramMessageIdLong.toInt() else null
+                    
+                    database.galleryMediaDao().insert(
+                        com.telegram.cloud.gallery.GalleryMediaEntity(
+                            id = id,
+                            localPath = localPath,
+                            filename = filename,
+                            mimeType = mimeType,
+                            sizeBytes = sizeBytes,
+                            dateTaken = dateTaken,
+                            dateModified = dateModified,
+                            width = width,
+                            height = height,
+                            durationMs = durationMs,
+                            thumbnailPath = thumbnailPath,
+                            isSynced = isSynced,
+                            telegramFileId = telegramFileId,
+                            telegramMessageId = telegramMessageId,
+                            telegramFileUniqueId = telegramFileUniqueId,
+                            telegramUploaderTokens = telegramUploaderTokens,
+                            syncError = syncError,
+                            lastSyncAttempt = lastSyncAttempt
+                        )
+                    )
+                }
+                cursor.close()
+            }
+            
+            Log.i(TAG, "migrateFromAndroidBackup: Migration complete. Migrated $migratedCount files")
+        } catch (e: Exception) {
+            Log.e(TAG, "migrateFromAndroidBackup: Error during migration", e)
+            throw e
+        }
+    }
+
+    /**
      * Migrates from SQLCipher encrypted database to Android Room format.
      * Uses Room DAO directly to ensure data is visible immediately.
      */
@@ -575,6 +1120,7 @@ class BackupManager(
         targetDb: File,
         channelId: String
     ) {
+        // targetDb parameter kept for API compatibility but not used (migration uses Room DAO directly)
         Log.i(TAG, "migrateFromSQLCipher: Starting migration")
         
         try {

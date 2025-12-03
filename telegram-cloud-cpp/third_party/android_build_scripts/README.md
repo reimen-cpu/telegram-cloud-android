@@ -1,55 +1,82 @@
 Android build scripts for native dependencies
 ===========================================
 
-This folder contains helper scripts and instructions to cross-compile OpenSSL, libcurl and SQLCipher for Android using the Android NDK CMake toolchain.
+This folder contains helper scripts to cross-compile OpenSSL, libcurl and SQLCipher for Android using the Android NDK. **These scripts are designed for Linux/macOS only and use Linux NDK.**
 
 High-level notes / requirements
-- Android NDK installed (recommended r25c or r26). Set `NDK_HOME` or pass `-ndk` argument to scripts.
-- Android SDK (for general Android builds).
-- CMake 3.22+ (NDK includes a CMake version; scripts use NDK's toolchain file).
-- Bash (Git Bash/WSL) for the .sh scripts or PowerShell for the .ps1 scripts on Windows.
-- Internet access to clone source repositories (or download tarballs and set env vars to point to them).
-- Perl may be required for some OpenSSL versions if using Configure; the scripts prefer CMake-based build where available.
+- **Linux or macOS** (autobuild only supports Linux/macOS)
+- Android NDK installed (recommended r25c or r26) - **Linux NDK version**
+- Android SDK (for general Android builds)
+- CMake 3.22+ (NDK includes a CMake version; scripts use NDK's toolchain file)
+- Bash shell
+- Internet access to clone source repositories (or download tarballs and set env vars to point to them)
+- Perl (required for OpenSSL Configure script)
 
 Overview of scripts
-- build_openssl_android.ps1 / build_openssl_android.sh
-  Builds OpenSSL for a given ABI and API level using the NDK toolchain (CMake path).
+- `build_openssl_android.sh`
+  Builds OpenSSL for a given ABI and API level using the Linux NDK toolchain (Configure + make).
 
-- build_libcurl_android.ps1 / build_libcurl_android.sh
-  Builds libcurl linking against the OpenSSL build output.
+- `build_libcurl_android.sh`
+  Builds libcurl linking against the OpenSSL build output using CMake.
 
-- build_sqlcipher_android.ps1 / build_sqlcipher_android.sh
-  Builds SQLCipher (sqlite with codec) for Android and links to OpenSSL if requested.
+- `build_sqlcipher_android.sh`
+  Builds SQLCipher (sqlite with codec) for Android and links to OpenSSL if requested using CMake.
 
-Usage (PowerShell example)
-1. Open PowerShell and set variables (adjust paths for your machine):
+Usage (Linux/macOS example)
+1. Set environment variables (adjust paths for your machine):
 
-   $NDK = "C:\\Android\\ndk\\r25c"
-   $API = 24
-   $ABI = "arm64-v8a"
-   $OUT = "C:\\Users\\$env:USERNAME\\native-android-builds"
+```bash
+export NDK="$HOME/android-sdk/ndk/26.3.11579264"
+export API=24
+export ABI="arm64-v8a"
+export OUT="$HOME/android-native-builds"
+```
 
-2. Build OpenSSL (example):
+2. Build OpenSSL:
 
-   .\\build_openssl_android.ps1 -ndk $NDK -abi $ABI -api $API -srcPath "C:\\sources\\openssl-3.1.3" -outDir $OUT\\openssl
+```bash
+./build_openssl_android.sh \
+  -ndk "$NDK" \
+  -abi "$ABI" \
+  -api $API \
+  -srcPath "$HOME/android-native-sources/openssl-3.2.0" \
+  -outDir "$OUT/openssl"
+```
 
-3. Build libcurl (example):
+3. Build libcurl:
 
-   .\\build_libcurl_android.ps1 -ndk $NDK -abi $ABI -api $API -opensslDir $OUT\\openssl -srcPath "C:\\sources\\curl-8.4.0" -outDir $OUT\\libcurl
+```bash
+./build_libcurl_android.sh \
+  -ndk "$NDK" \
+  -abi "$ABI" \
+  -api $API \
+  -opensslDir "$OUT/openssl/build_arm64_v8a/installed" \
+  -srcPath "$HOME/android-native-sources/curl-8.7.1" \
+  -outDir "$OUT/libcurl"
+```
 
-4. Build SQLCipher (example):
+4. Build SQLCipher:
 
-   .\\build_sqlcipher_android.ps1 -ndk $NDK -abi $ABI -api $API -opensslDir $OUT\\openssl -srcPath "C:\\sources\\sqlcipher" -outDir $OUT\\sqlcipher
+```bash
+./build_sqlcipher_android.sh \
+  -ndk "$NDK" \
+  -abi "$ABI" \
+  -api $API \
+  -opensslDir "$OUT/openssl/build_arm64_v8a/installed" \
+  -srcPath "$HOME/android-native-sources/sqlcipher" \
+  -outDir "$OUT/sqlcipher"
+```
 
 After building, point your Android/CMake configuration to the produced library directories and headers. Example CMake options:
 
-  -DOPENSSL_ROOT_DIR=<out>/openssl
-  -DCURL_ROOT=<out>/libcurl
-  -DSQLCIPHER_ROOT=<out>/sqlcipher
+```cmake
+-DOPENSSL_ROOT_DIR=<out>/openssl/build_arm64_v8a/installed
+-DCURL_ROOT=<out>/libcurl/build_arm64_v8a/installed
+-DSQLCIPHER_ROOT=<out>/sqlcipher/build_arm64_v8a/installed
+```
 
 Notes and troubleshooting
-- If a script fails because OpenSSL uses Configure/Perl, install Strawberry Perl on Windows or run scripts under WSL.
-- For reproducibility, pin OpenSSL/libcurl/sqlcipher versions matching your desktop build where possible.
-- Some projects include Android-specific patches or CMake helper files; consult their README if the CMake approach fails.
-
-If you want, puedo ejecutar los scripts para un ABI específico en tu máquina (necesitaré `ndk.dir` en `local.properties` o la ruta del NDK). 
+- **Linux NDK required**: These scripts are designed for Linux/macOS with Linux NDK only
+- For reproducibility, pin OpenSSL/libcurl/sqlcipher versions matching your desktop build where possible
+- Some projects include Android-specific patches or CMake helper files; consult their README if the CMake approach fails
+- OpenSSL uses Configure + make (not CMake) as per OpenSSL's official build system 

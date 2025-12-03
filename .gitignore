@@ -20,6 +20,8 @@ keystore/
 *.jks
 *.keystore
 *.key
+keystore.properties
+android/keystore.properties
 
 # Android Studio / IntelliJ IDEA
 *.iml
@@ -43,6 +45,7 @@ cmake_install.cmake
 compile_commands.json
 *.cmake
 !CMakeLists.txt
+.cxx/
 
 # Native build artifacts
 *.o

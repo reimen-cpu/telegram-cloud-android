@@ -97,6 +97,8 @@
     <string name="cloud">Cloud</string>
     <string name="gallery_sync">Sincronización de galería</string>
     <string name="syncing_gallery">Sincronizando galería…</string>
+    <string name="restoring_gallery">Restaurando galería…</string>
+    <string name="restore_all">Restaurar todo</string>
     <string name="clear_search">Limpiar búsqueda</string>
     <string name="chunked">Fragmentado</string>
     <string name="close_selection">Cerrar selección</string>

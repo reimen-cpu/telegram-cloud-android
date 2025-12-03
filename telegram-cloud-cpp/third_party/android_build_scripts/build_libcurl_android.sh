@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
+set -u
+# Try to enable pipefail, but don't fail if it's not supported
+(set -o pipefail) 2>/dev/null || true
 
 # libcurl build script for Android using CMake
 # This script cross-compiles libcurl for Android using the NDK
@@ -78,6 +81,18 @@ ABI_NORMALIZED="${ABI//-/_}"
 BUILD_DIR="$OUT_DIR/build_$ABI_NORMALIZED"
 INSTALL_DIR="$BUILD_DIR/installed"
 
+# Cache check: skip build if already compiled successfully
+if [ -f "$INSTALL_DIR/lib/libcurl.a" ] && [ -d "$INSTALL_DIR/include/curl" ]; then
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "✓ libcurl already built (cache hit)"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "Install location: $INSTALL_DIR"
+  echo "Library: $INSTALL_DIR/lib/libcurl.a"
+  echo "Headers: $INSTALL_DIR/include/curl"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  exit 0
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "libcurl Build Configuration"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -98,6 +113,36 @@ fi
 
 mkdir -p "$BUILD_DIR"
 
+# Set up NDK toolchain paths
+NDK_TOOLCHAIN_BASE="$NDK/toolchains/llvm/prebuilt"
+
+# Detect host OS for NDK toolchain (Linux or macOS only)
+if [ -d "$NDK_TOOLCHAIN_BASE/linux-x86_64" ]; then
+  NDK_TOOLCHAIN="$NDK_TOOLCHAIN_BASE/linux-x86_64"
+elif [ -d "$NDK_TOOLCHAIN_BASE/darwin-x86_64" ]; then
+  NDK_TOOLCHAIN="$NDK_TOOLCHAIN_BASE/darwin-x86_64"
+else
+  echo "Error: Could not find NDK toolchain in $NDK_TOOLCHAIN_BASE"
+  echo "  Expected linux-x86_64 or darwin-x86_64"
+  exit 1
+fi
+
+# Set up compiler target prefix
+case "$ABI" in
+  arm64-v8a)
+    TARGET_PREFIX="aarch64-linux-android"
+    ;;
+  armeabi-v7a)
+    TARGET_PREFIX="armv7a-linux-androideabi"
+    ;;
+  x86)
+    TARGET_PREFIX="i686-linux-android"
+    ;;
+  x86_64)
+    TARGET_PREFIX="x86_64-linux-android"
+    ;;
+esac
+
 # Verify NDK toolchain file exists
 TOOLCHAIN="$NDK/build/cmake/android.toolchain.cmake"
 if [ ! -f "$TOOLCHAIN" ]; then
@@ -109,15 +154,35 @@ cd "$BUILD_DIR"
 
 echo ""
 echo "[1/3] Configuring libcurl with CMake..."
-cmake -G "Ninja" \
-  -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-  -DANDROID_ABI="$ABI" \
-  -DANDROID_PLATFORM="android-$API" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCURL_USE_OPENSSL=ON \
-  -DOPENSSL_ROOT_DIR="$OPENSSL_DIR" \
-  -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
-  -S "$SRC_PATH" -B .
+
+echo "Using NDK toolchain: $NDK_TOOLCHAIN"
+
+# Verify OpenSSL installation structure
+if [ ! -d "$OPENSSL_DIR/lib" ] || [ ! -d "$OPENSSL_DIR/include" ]; then
+  echo "Error: OpenSSL directory structure invalid: $OPENSSL_DIR"
+  echo "  Expected: $OPENSSL_DIR/lib and $OPENSSL_DIR/include"
+  exit 1
+fi
+
+# Build CMake command
+CMAKE_ARGS=(
+  -G "Ninja"
+  -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN"
+  -DANDROID_ABI="$ABI"
+  -DANDROID_PLATFORM="android-$API"
+  -DCMAKE_BUILD_TYPE=Release
+  -DBUILD_SHARED_LIBS=OFF
+  -DCURL_USE_OPENSSL=ON
+  -DOPENSSL_ROOT_DIR="$OPENSSL_DIR"
+  -DOPENSSL_INCLUDE_DIR="$OPENSSL_DIR/include"
+  -DOPENSSL_CRYPTO_LIBRARY="$OPENSSL_DIR/lib/libcrypto.a"
+  -DOPENSSL_SSL_LIBRARY="$OPENSSL_DIR/lib/libssl.a"
+  -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"
+  -S "$SRC_PATH"
+  -B .
+)
+
+cmake "${CMAKE_ARGS[@]}"
 
 if [ $? -ne 0 ]; then
   echo "Error: CMake configuration failed"
@@ -126,7 +191,7 @@ fi
 
 echo ""
 echo "[2/3] Building libcurl..."
-cmake --build . --config Release -- -j
+cmake --build . -j$(nproc)
 
 if [ $? -ne 0 ]; then
   echo "Error: Build failed"
@@ -135,7 +200,7 @@ fi
 
 echo ""
 echo "[3/3] Installing libcurl..."
-cmake --install . --config Release
+cmake --install .
 
 if [ $? -ne 0 ]; then
   echo "Error: Install failed"
@@ -146,7 +211,12 @@ fi
 echo ""
 echo "Verifying installation..."
 if [ ! -f "$INSTALL_DIR/lib/libcurl.a" ]; then
-  echo "Error: libcurl library not found in $INSTALL_DIR/lib"
+  echo "Error: libcurl static library not found in $INSTALL_DIR/lib"
+  if [ -f "$INSTALL_DIR/lib/libcurl.so" ]; then
+    echo "  Found shared library instead. BUILD_SHARED_LIBS should be OFF."
+  fi
+  echo "  Contents of lib directory:"
+  ls -la "$INSTALL_DIR/lib/" 2>/dev/null || echo "    (directory not found)"
   exit 1
 fi
 

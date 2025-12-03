@@ -246,7 +246,7 @@ std::string BatchOperations::generateGlobalShareData(const std::vector<BatchFile
     return jsonData;
 }
 
-bool BatchOperations::deleteSingleFile(const std::string& fileId, const std::string& fileName) {
+bool BatchOperations::deleteSingleFile(const std::string& fileId, const std::string& /* fileName */) {
     try {
         // 1. Obtener mensajes a eliminar de Telegram
         auto messagesToDelete = m_database->getMessagesToDelete(fileId);

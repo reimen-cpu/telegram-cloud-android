@@ -1573,7 +1573,7 @@ bool Database::markAllActiveDownloadsAsPaused() {
     }
     
     rc = sqlite3_step(stmt);
-    int changedRows = sqlite3_changes(m_db);
+    // int changedRows = sqlite3_changes(m_db); // Not used
     sqlite3_finalize(stmt);
     
     if (rc != SQLITE_DONE) {

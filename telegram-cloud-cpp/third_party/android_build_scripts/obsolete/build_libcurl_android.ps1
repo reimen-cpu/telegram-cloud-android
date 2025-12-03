@@ -57,11 +57,16 @@ function Find-Bash {
 
 # Helper function to convert Windows path to Unix path
 function Convert-WindowsPathToUnix {
-    param([string]$path)
+    param(
+        [string]$path,
+        [string]$bashPath
+    )
     
     if (-not [System.IO.Path]::IsPathRooted($path)) {
-        $path = Resolve-Path $path -ErrorAction SilentlyContinue
-        if (-not $path) {
+        $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+        if ($resolved) {
+            $path = $resolved
+        } else {
             $path = Join-Path (Get-Location) $path
         }
     }
@@ -69,9 +74,18 @@ function Convert-WindowsPathToUnix {
     $path = $path.ToString()
     $path = $path -replace '\\', '/'
     
+    # Detect if using WSL or Git Bash
+    $isWSL = $bashPath -like "*system32*" -or $bashPath -like "*wsl*" -or $bashPath -like "*\Windows\*bash.exe"
+    
     if ($path -match '^([A-Z]):') {
         $drive = $matches[1].ToLower()
-        $path = $path -replace '^[A-Z]:', "/$drive"
+        if ($isWSL) {
+            # WSL format: C:\ → /mnt/c/
+            $path = $path -replace '^[A-Z]:', "/mnt/$drive"
+        } else {
+            # Git bash format: C:\ → /c/
+            $path = $path -replace '^[A-Z]:', "/$drive"
+        }
     }
     
     return $path
@@ -92,10 +106,10 @@ try {
 }
 
 # Convert paths to Unix format
-$ndkUnix = Convert-WindowsPathToUnix $ndk
-$opensslDirUnix = Convert-WindowsPathToUnix $opensslDir
-$srcPathUnix = Convert-WindowsPathToUnix $srcPath
-$outDirUnix = Convert-WindowsPathToUnix $outDir
+$ndkUnix = Convert-WindowsPathToUnix $ndk $bashPath
+$opensslDirUnix = Convert-WindowsPathToUnix $opensslDir $bashPath
+$srcPathUnix = Convert-WindowsPathToUnix $srcPath $bashPath
+$outDirUnix = Convert-WindowsPathToUnix $outDir $bashPath
 
 if ($Verbose) {
     Write-Verbose "Path conversions:"
@@ -112,13 +126,49 @@ if (-not (Test-Path $shellScript)) {
     exit 1
 }
 
-$shellScriptUnix = Convert-WindowsPathToUnix $shellScript
+$shellScriptUnix = Convert-WindowsPathToUnix $shellScript $bashPath
 
 Write-Host ""
 Write-Host "Executing native shell script..."
 
+# Detect if using WSL
+$isWSL = $bashPath -like "*system32*" -or $bashPath -like "*wsl*" -or $bashPath -like "*\Windows\*bash.exe"
+
+# Build command arguments array properly
+$bashArgs = @($shellScriptUnix, "-ndk", $ndkUnix, "-abi", $abi, "-api", "$api", "-opensslDir", $opensslDirUnix, "-srcPath", $srcPathUnix, "-outDir", $outDirUnix)
+
+if ($Verbose) {
+    $cmdLine = ($bashArgs | ForEach-Object { if ($_ -match '\s') { "'$_'" } else { $_ } }) -join ' '
+    Write-Verbose "Command: bash $cmdLine"
+}
+
 # Execute bash script
-& $bashPath $shellScriptUnix -ndk $ndkUnix -abi $abi -api $api -opensslDir $opensslDirUnix -srcPath $srcPathUnix -outDir $outDirUnix
+# Set ANDROID_NDK_HOST_PLATFORM to force Windows toolchain when running from PowerShell
+$env:ANDROID_NDK_HOST_PLATFORM = "windows-x86_64"
+
+if ($isWSL) {
+    # For WSL, construct command as string and execute via bash -c
+    function Escape-SingleQuotes {
+        param([string]$str)
+        return $str -replace "'", "'\''"
+    }
+    
+    $scriptEscaped = Escape-SingleQuotes $shellScriptUnix
+    $ndkEscaped = Escape-SingleQuotes $ndkUnix
+    $opensslEscaped = Escape-SingleQuotes $opensslDirUnix
+    $srcEscaped = Escape-SingleQuotes $srcPathUnix
+    $outEscaped = Escape-SingleQuotes $outDirUnix
+    
+    # Export environment variable in the bash command
+    $wslCmd = "export ANDROID_NDK_HOST_PLATFORM=windows-x86_64 && bash '$scriptEscaped' -ndk '$ndkEscaped' -abi '$abi' -api $api -opensslDir '$opensslEscaped' -srcPath '$srcEscaped' -outDir '$outEscaped'"
+    
+    Write-Verbose "Executing via WSL: wsl bash -c `"$wslCmd`""
+    & wsl bash -c $wslCmd
+} else {
+    # For Git Bash, set environment variable and use direct execution with array
+    $env:ANDROID_NDK_HOST_PLATFORM = "windows-x86_64"
+    & $bashPath @bashArgs
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "libcurl build failed with exit code: $LASTEXITCODE"

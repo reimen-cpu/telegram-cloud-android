@@ -35,8 +35,8 @@ ChunkedDownload::ChunkedDownload(Database* database, TelegramHandler* telegramHa
     , m_isActive(false)
     , m_isCanceled(false)
     , m_isPaused(false)
-    , m_completedChunks(0)
     , m_totalChunks(0)
+    , m_completedChunks(0)
 {
 }
 
@@ -369,7 +369,7 @@ void ChunkedDownload::downloadChunksParallel(const std::set<int64_t>& skipChunks
     
     // Vector de futures para paralelización
     std::vector<std::future<bool>> futures;
-    Config& config = Config::instance();
+    // Config& config = Config::instance(); // Not used in this scope
     const int MAX_PARALLEL = 5; // Descargas paralelas simultáneas
     
     for (size_t i = 0; i < m_chunks.size(); ++i) {

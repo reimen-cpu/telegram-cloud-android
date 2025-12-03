@@ -770,9 +770,12 @@ class MainActivity : ComponentActivity() {
                         var showTaskQueue by rememberSaveable { mutableStateOf(false) }
                         
                         // Gallery state
-                        val galleryMedia by galleryViewModel.mediaList.collectAsState()
+                        val galleryUiState by galleryViewModel.uiState.collectAsState()
+                        val galleryFilterState by galleryViewModel.filterState.collectAsState()
                         val gallerySyncState by galleryViewModel.syncState.collectAsState()
                         val gallerySyncProgress by galleryViewModel.syncProgress.collectAsState()
+                        val galleryRestoreState by galleryViewModel.restoreState.collectAsState()
+                        val galleryRestoreProgress by galleryViewModel.restoreProgress.collectAsState()
                         val gallerySyncedCount by galleryViewModel.syncedCount.collectAsState()
                         val galleryTotalCount by galleryViewModel.totalCount.collectAsState()
                         val gallerySyncFileName by galleryViewModel.currentSyncFileName.collectAsState()
@@ -969,7 +972,7 @@ class MainActivity : ComponentActivity() {
                                 
                                 // Find selected media from list
                                 val mediaToView = selectedMedia?.let { id ->
-                                    galleryMedia.find { it.id == id }
+                                    galleryUiState.currentMedia.find { it.id == id }
                                 }
                                 
                                 // Handle system back button
@@ -1179,9 +1182,15 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     // Show gallery grid
                                     CloudGalleryScreen(
-                                        mediaList = galleryMedia,
+                                        uiState = galleryUiState,
+                                        filterState = galleryFilterState,
+                                        onUpdateFilter = { update ->
+                                            galleryViewModel.updateFilter(update)
+                                        },
                                         syncState = gallerySyncState,
                                         syncProgress = gallerySyncProgress,
+                                        restoreState = galleryRestoreState,
+                                        restoreProgress = galleryRestoreProgress,
                                         syncedCount = gallerySyncedCount,
                                         totalCount = galleryTotalCount,
                                         onScanMedia = {
@@ -1216,6 +1225,21 @@ class MainActivity : ComponentActivity() {
                                         onCancelSync = {
                                             scope.launch {
                                                 galleryViewModel.cancelSync()
+                                                snackbarHostState.showSnackbar(context.getString(R.string.sync_stopped))
+                                            }
+                                        },
+                                        onRestoreAll = {
+                                            config?.let { cfg ->
+                                                scope.launch {
+                                                    galleryViewModel.restoreAllSynced(cfg)
+                                                }
+                                            } ?: scope.launch {
+                                                snackbarHostState.showSnackbar(context.getString(R.string.config_not_available))
+                                            }
+                                        },
+                                        onCancelRestore = {
+                                            scope.launch {
+                                                galleryViewModel.cancelRestore()
                                                 snackbarHostState.showSnackbar(context.getString(R.string.sync_stopped))
                                             }
                                         },

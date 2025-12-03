@@ -180,12 +180,46 @@ if(DEFINED SQLCIPHER_ROOT)
 endif()
 
 # Link zlib if available (needed by curl and openssl)
+# Try multiple locations: CURL_ROOT, then NDK sysroot
+set(_zlib_lib "")
 if(DEFINED CURL_ROOT)
     set(_zlib_lib "${CURL_ROOT}/lib/libz.a")
-    if(EXISTS "${_zlib_lib}")
-        message(STATUS "Found zlib: ${_zlib_lib}")
-        target_link_libraries(telegramcloud_core PRIVATE ${_zlib_lib})
+    if(NOT EXISTS "${_zlib_lib}")
+        set(_zlib_lib "")
     endif()
+endif()
+
+# If not found in CURL_ROOT, try NDK sysroot (Android NDK includes zlib)
+# Android CMake provides CMAKE_SYSROOT which points to the NDK sysroot
+if("${_zlib_lib}" STREQUAL "" AND DEFINED CMAKE_SYSROOT)
+    # Try common locations in NDK sysroot
+    set(_zlib_paths
+        "${CMAKE_SYSROOT}/usr/lib/${ANDROID_ABI}/libz.a"
+        "${CMAKE_SYSROOT}/usr/lib/libz.a"
+    )
+    foreach(_path IN LISTS _zlib_paths)
+        if(EXISTS "${_path}")
+            set(_zlib_lib "${_path}")
+            break()
+        endif()
+    endforeach()
+endif()
+
+# If still not found, try using find_library (may find system zlib)
+if("${_zlib_lib}" STREQUAL "")
+    find_library(ZLIB_LIBRARY z)
+    if(ZLIB_LIBRARY)
+        set(_zlib_lib "${ZLIB_LIBRARY}")
+    endif()
+endif()
+
+if(NOT "${_zlib_lib}" STREQUAL "")
+    message(STATUS "Found zlib: ${_zlib_lib}")
+    target_link_libraries(telegramcloud_core PRIVATE ${_zlib_lib})
+else()
+    # Fallback: link zlib by name (Android NDK should provide it)
+    message(STATUS "zlib not found as static library, linking by name")
+    target_link_libraries(telegramcloud_core PRIVATE z)
 endif()
 
 # Common compile flags for Android

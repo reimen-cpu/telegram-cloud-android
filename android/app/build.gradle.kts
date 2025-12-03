@@ -17,7 +17,7 @@ val localNativeProps = Properties().apply {
 android {
     namespace = "com.telegram.cloud"
     compileSdk = 34
-    ndkVersion = "25.2.9519653"
+    ndkVersion = "26.3.11579264"
 
     defaultConfig {
         applicationId = "com.telegram.cloud"
@@ -100,6 +100,22 @@ android {
         }
     }
 
+    // Configuración de signing
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    if (keystorePropertiesFile.exists()) {
+        val keystoreProperties = Properties()
+        keystoreProperties.load(keystorePropertiesFile.inputStream())
+        
+        signingConfigs {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -108,6 +124,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

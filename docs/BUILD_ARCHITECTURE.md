@@ -2,94 +2,46 @@
 
 ## Overview
 
-This document explains the build system architecture for Telegram Cloud Android, which uses **PowerShell as an orchestrator** for native shell scripts.
+This document explains the build system architecture for Telegram Cloud Android. The autobuild system is **Linux-only** and uses native shell scripts with Linux SDK/NDK.
 
 ## Architecture Diagram
 
 ```
-Windows (PowerShell)
-  ├─ build-complete.ps1
-  │   ├─ Detects: bash, NDK, SDK
-  │   ├─ Downloads dependencies
-  │   └─ Calls individual build scripts
-  │
-  ├─ build_openssl_android.ps1 ─────┐
-  ├─ build_libcurl_android.ps1 ─────┼─ PowerShell Orchestrators
-  └─ build_sqlcipher_android.ps1 ───┘
-       │
-       ├─ Detect bash (Git for Windows / WSL)
-       ├─ Convert Windows paths → Unix paths
-       └─ Execute: bash build_*.sh
-            │
-            ├─ build_openssl_android.sh ─────┐
-            ├─ build_libcurl_android.sh ─────┼─ Native Shell Scripts
-            └─ build_sqlcipher_android.sh ───┘
-                 │
-                 └─ Cross-compile for Android using NDK
-
 Linux/macOS (Bash)
   └─ build-complete.sh
-      ├─ build_openssl_android.sh
-      ├─ build_libcurl_android.sh
-      └─ build_sqlcipher_android.sh
+      ├─ Downloads dependencies
+      ├─ build_openssl_android.sh (Linux NDK)
+      ├─ build_libcurl_android.sh (Linux NDK)
+      └─ build_sqlcipher_android.sh (Linux NDK)
+           │
+           └─ Cross-compile for Android using Linux NDK
 ```
 
 ## Why This Approach?
 
 ### Single Source of Truth
 - **Shell scripts** contain all build logic
-- Work identically on Windows (bash), WSL, Linux, and macOS
-- No duplication between PowerShell and shell scripts
+- Designed specifically for Linux/macOS with Linux NDK
+- Simple and straightforward without cross-platform complexity
 
 ### Simplicity
-- PowerShell scripts are **~150 lines** (vs ~440 lines before)
+- Shell scripts are focused on Linux/macOS only
 - Easy to understand and maintain
-- Clear separation of concerns
+- No path conversion or WSL detection needed
 
-### Cross-Platform
-- Same shell scripts work everywhere
-- PowerShell only handles Windows-specific concerns (path conversion, bash detection)
-- Linux/macOS users can run shell scripts directly
+### Linux-First
+- Optimized for Linux native builds
+- Uses Linux NDK toolchain directly
+- No Windows/WSL compatibility layers
 
 ### Maintainability
 - Adding new dependencies: just create one shell script
-- Debugging: check shell script logs, not complex PowerShell logic
-- Testing: shell scripts can be tested independently
+- Debugging: check shell script logs
+- Testing: shell scripts can be tested independently on Linux
 
 ## Components
 
-### 1. PowerShell Orchestrators
-
-Located in: `telegram-cloud-cpp/third_party/android_build_scripts/*.ps1`
-
-**Purpose:** Detect bash and execute shell scripts on Windows
-
-**Responsibilities:**
-- Validate input parameters
-- Find bash (Git for Windows or WSL)
-- Convert Windows paths to Unix format
-- Execute corresponding shell script
-- Check exit codes and report errors
-
-**Example:**
-```powershell
-# build_openssl_android.ps1
-param([string]$ndk, [string]$srcPath, [string]$outDir)
-
-# 1. Find bash
-$bashPath = Find-Bash
-
-# 2. Convert paths
-$ndkUnix = Convert-WindowsPathToUnix $ndk
-
-# 3. Execute shell script
-& $bashPath build_openssl_android.sh -ndk $ndkUnix -srcPath $srcPathUnix -outDir $outDirUnix
-
-# 4. Check result
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-```
-
-### 2. Native Shell Scripts
+### 1. Native Shell Scripts
 
 Located in: `telegram-cloud-cpp/third_party/android_build_scripts/*.sh`
 
@@ -124,59 +76,26 @@ make -j$(nproc)
 make install_sw
 ```
 
-### 3. Main Build Script
+### 2. Main Build Script
 
-Located in: `scripts/powershell/build-complete.ps1` (Windows) or `scripts/shell/build-complete.sh` (Linux/macOS)
+Located in: `scripts/shell/build-complete.sh` (Linux/macOS only)
 
 **Purpose:** Orchestrate the complete build process
 
 **Steps:**
-1. Verify requirements (bash, NDK, SDK)
+1. Verify requirements (NDK, SDK on Linux)
 2. Download dependencies (OpenSSL, libcurl, SQLCipher)
-3. Build each dependency in order
+3. Build each dependency in order using Linux NDK
 4. Update `android/local.properties`
 5. Build APK with Gradle
 
-### 4. Utility Scripts
+### 3. Utility Scripts
 
-#### `check-requirements.ps1`
-Validates all prerequisites before building:
-- Bash availability
-- Android SDK + NDK
-- Disk space (5GB minimum)
-- Write permissions
-
-#### `setup-dependencies.ps1`
+#### `setup-dependencies.sh`
 Downloads source code for:
 - OpenSSL 3.2.0
 - libcurl 8.7.1
 - SQLCipher (latest)
-
-## Path Conversion
-
-Windows paths must be converted to Unix format for bash:
-
-| Windows Path | Unix Path |
-|--------------|-----------|
-| `C:\Android\ndk` | `/c/android/ndk` |
-| `D:\sources\openssl-3.2.0` | `/d/sources/openssl-3.2.0` |
-| `C:\Users\Name\builds` | `/c/users/name/builds` |
-
-**Implementation:**
-```powershell
-function Convert-WindowsPathToUnix {
-    param([string]$path)
-    
-    # Convert backslashes to forward slashes
-    $path = $path -replace '\\', '/'
-    
-    # Convert drive letter (C:\ → /c/)
-    $path = $path -replace '^([A-Z]):', '/$1'
-    
-    # Lowercase drive letter
-    return $path.ToLower()
-}
-```
 
 ## Build Methods
 

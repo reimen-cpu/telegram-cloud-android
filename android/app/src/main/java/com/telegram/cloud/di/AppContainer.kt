@@ -75,7 +75,7 @@ class AppContainer(context: Context) {
         botClient = botClient
     )
 
-    val backupManager = BackupManager(appContext, configStore, database, repository)
+    val backupManager = BackupManager(appContext, configStore, database)
     
     // Gallery components
     val mediaScanner = MediaScanner(appContext)

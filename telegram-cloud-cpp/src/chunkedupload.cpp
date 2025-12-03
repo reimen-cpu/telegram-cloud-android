@@ -33,9 +33,9 @@ ChunkedUpload::ChunkedUpload(Database* database, TelegramHandler* telegramHandle
     , m_isActive(false)
     , m_isCanceled(false)
     , m_isPaused(false)
-    , m_currentChunkIndex(0)
-    , m_completedChunks(0)
     , m_totalChunks(0)
+    , m_completedChunks(0)
+    , m_currentChunkIndex(0)
 {
 }
 
@@ -351,7 +351,7 @@ void ChunkedUpload::uploadChunksParallel(const std::set<int64_t>& skipChunks) {
         
         // Upload chunk en thread separado
         auto future = std::async(std::launch::async, 
-            [this, chunkIndex, chunkData, chunkHash, botToken, bytesRead]() {
+            [this, chunkIndex, chunkData, chunkHash, botToken]() {
                 return uploadSingleChunk(chunkIndex, chunkData, chunkHash, botToken);
             }
         );

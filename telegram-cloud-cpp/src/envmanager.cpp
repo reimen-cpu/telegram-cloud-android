@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <openssl/evp.h>
+#include <openssl/sha.h>
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 
@@ -412,10 +413,21 @@ void EnvManager::deserialize(const std::string& data) {
 
 std::string EnvManager::sha256(const std::string& data) const {
     unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, data.c_str(), data.length());
-    SHA256_Final(hash, &sha256);
+    
+    // Use OpenSSL 3.x EVP API instead of deprecated SHA256_* functions
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+    if (mdctx == nullptr) {
+        throw std::runtime_error("Failed to create EVP_MD_CTX");
+    }
+    
+    if (EVP_DigestInit_ex(mdctx, EVP_sha256(), nullptr) != 1 ||
+        EVP_DigestUpdate(mdctx, data.c_str(), data.length()) != 1 ||
+        EVP_DigestFinal_ex(mdctx, hash, nullptr) != 1) {
+        EVP_MD_CTX_free(mdctx);
+        throw std::runtime_error("SHA256 digest failed");
+    }
+    
+    EVP_MD_CTX_free(mdctx);
     
     std::stringstream ss;
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {

@@ -58,11 +58,16 @@ function Find-Bash {
 
 # Helper function to convert Windows path to Unix path
 function Convert-WindowsPathToUnix {
-    param([string]$path)
+    param(
+        [string]$path,
+        [string]$bashPath
+    )
     
     if (-not [System.IO.Path]::IsPathRooted($path)) {
-        $path = Resolve-Path $path -ErrorAction SilentlyContinue
-        if (-not $path) {
+        $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+        if ($resolved) {
+            $path = $resolved
+        } else {
             $path = Join-Path (Get-Location) $path
         }
     }
@@ -70,9 +75,18 @@ function Convert-WindowsPathToUnix {
     $path = $path.ToString()
     $path = $path -replace '\\', '/'
     
+    # Detect if using WSL or Git Bash
+    $isWSL = $bashPath -like "*system32*" -or $bashPath -like "*wsl*" -or $bashPath -like "*\Windows\*bash.exe"
+    
     if ($path -match '^([A-Z]):') {
         $drive = $matches[1].ToLower()
-        $path = $path -replace '^[A-Z]:', "/$drive"
+        if ($isWSL) {
+            # WSL format: C:\ → /mnt/c/
+            $path = $path -replace '^[A-Z]:', "/mnt/$drive"
+        } else {
+            # Git bash format: C:\ → /c/
+            $path = $path -replace '^[A-Z]:', "/$drive"
+        }
     }
     
     return $path
@@ -92,16 +106,24 @@ try {
     exit 1
 }
 
+# Get shell script path first
+$shellScript = Join-Path $PSScriptRoot "build_sqlcipher_android.sh"
+if (-not (Test-Path $shellScript)) {
+    Write-Error "Shell script not found: $shellScript"
+    exit 1
+}
+
 # Convert paths to Unix format
-$ndkUnix = Convert-WindowsPathToUnix $ndk
-$srcPathUnix = Convert-WindowsPathToUnix $srcPath
-$outDirUnix = Convert-WindowsPathToUnix $outDir
+$ndkUnix = Convert-WindowsPathToUnix $ndk $bashPath
+$srcPathUnix = Convert-WindowsPathToUnix $srcPath $bashPath
+$outDirUnix = Convert-WindowsPathToUnix $outDir $bashPath
+$shellScriptUnix = Convert-WindowsPathToUnix $shellScript $bashPath
 
 # Build arguments array
 $bashArgs = @($shellScriptUnix, "-ndk", $ndkUnix, "-abi", $abi, "-api", $api, "-srcPath", $srcPathUnix, "-outDir", $outDirUnix)
 
 if ($opensslDir) {
-    $opensslDirUnix = Convert-WindowsPathToUnix $opensslDir
+    $opensslDirUnix = Convert-WindowsPathToUnix $opensslDir $bashPath
     $bashArgs += @("-opensslDir", $opensslDirUnix)
     
     if ($Verbose) {
@@ -120,20 +142,47 @@ if ($opensslDir) {
     }
 }
 
-# Get shell script path
-$shellScript = Join-Path $PSScriptRoot "build_sqlcipher_android.sh"
-if (-not (Test-Path $shellScript)) {
-    Write-Error "Shell script not found: $shellScript"
-    exit 1
-}
-
-$shellScriptUnix = Convert-WindowsPathToUnix $shellScript
-
 Write-Host ""
 Write-Host "Executing native shell script..."
 
+# Detect if using WSL
+$isWSL = $bashPath -like "*system32*" -or $bashPath -like "*wsl*" -or $bashPath -like "*\Windows\*bash.exe"
+
+if ($Verbose) {
+    $cmdLine = ($bashArgs | ForEach-Object { if ($_ -match '\s') { "'$_'" } else { $_ } }) -join ' '
+    Write-Verbose "Command: bash $cmdLine"
+}
+
 # Execute bash script
-& $bashPath @bashArgs
+# Set ANDROID_NDK_HOST_PLATFORM to force Windows toolchain when running from PowerShell
+$env:ANDROID_NDK_HOST_PLATFORM = "windows-x86_64"
+
+if ($isWSL) {
+    # For WSL, construct command as string and execute via bash -c
+    function Escape-SingleQuotes {
+        param([string]$str)
+        return $str -replace "'", "'\''"
+    }
+    
+    $scriptEscaped = Escape-SingleQuotes $shellScriptUnix
+    $ndkEscaped = Escape-SingleQuotes $ndkUnix
+    $srcEscaped = Escape-SingleQuotes $srcPathUnix
+    $outEscaped = Escape-SingleQuotes $outDirUnix
+    
+    if ($opensslDir) {
+        $opensslEscaped = Escape-SingleQuotes $opensslDirUnix
+        $wslCmd = "export ANDROID_NDK_HOST_PLATFORM=windows-x86_64 && bash '$scriptEscaped' -ndk '$ndkEscaped' -abi '$abi' -api $api -opensslDir '$opensslEscaped' -srcPath '$srcEscaped' -outDir '$outEscaped'"
+    } else {
+        $wslCmd = "export ANDROID_NDK_HOST_PLATFORM=windows-x86_64 && bash '$scriptEscaped' -ndk '$ndkEscaped' -abi '$abi' -api $api -srcPath '$srcEscaped' -outDir '$outEscaped'"
+    }
+    
+    Write-Verbose "Executing via WSL: wsl bash -c `"$wslCmd`""
+    & wsl bash -c $wslCmd
+} else {
+    # For Git Bash, set environment variable and use direct execution with array
+    $env:ANDROID_NDK_HOST_PLATFORM = "windows-x86_64"
+    & $bashPath @bashArgs
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "SQLCipher build failed with exit code: $LASTEXITCODE"

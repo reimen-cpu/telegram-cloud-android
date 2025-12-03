@@ -38,11 +38,11 @@ Los scripts de compilación están ubicados en `telegram-cloud-cpp/third_party/a
 
 ### Scripts Disponibles
 
-- `build_openssl_android.sh` / `build_openssl_android.ps1`
-- `build_libcurl_android.sh` / `build_libcurl_android.ps1`
-- `build_sqlcipher_android.sh` / `build_sqlcipher_android.ps1`
+- `build_openssl_android.sh` (Linux/macOS only)
+- `build_libcurl_android.sh` (Linux/macOS only)
+- `build_sqlcipher_android.sh` (Linux/macOS only)
 
-### Linux/macOS
+### Linux/macOS (Recomendado)
 
 ```bash
 export NDK="/ruta/al/android-ndk-r25c"
@@ -77,40 +77,9 @@ export OUT_DIR="/ruta/donde/guardar/librerias"
   -outDir "$OUT_DIR/sqlcipher"
 ```
 
-### Windows (PowerShell)
+### Nota sobre Windows
 
-```powershell
-$NDK = 'C:\Android\Sdk\ndk\25.2.9519653'
-$API = 24
-$ABI = 'arm64-v8a'
-$OUT = 'C:\builds\native'
-
-# Compilar OpenSSL
-.\telegram-cloud-cpp\third_party\android_build_scripts\build_openssl_android.ps1 `
-  -ndk $NDK `
-  -abi $ABI `
-  -api $API `
-  -srcPath 'C:\sources\openssl-3.2.0' `
-  -outDir "$OUT\openssl"
-
-# Compilar libcurl
-.\telegram-cloud-cpp\third_party\android_build_scripts\build_libcurl_android.ps1 `
-  -ndk $NDK `
-  -abi $ABI `
-  -api $API `
-  -opensslDir "$OUT\openssl\build_arm64" `
-  -srcPath 'C:\sources\curl-8.7.1' `
-  -outDir "$OUT\libcurl"
-
-# Compilar SQLCipher
-.\telegram-cloud-cpp\third_party\android_build_scripts\build_sqlcipher_android.ps1 `
-  -ndk $NDK `
-  -abi $ABI `
-  -api $API `
-  -opensslDir "$OUT\openssl\build_arm64" `
-  -srcPath 'C:\sources\sqlcipher' `
-  -outDir "$OUT\sqlcipher"
-```
+Los scripts de autobuild están diseñados solo para Linux/macOS con Linux NDK. Si necesitas compilar en Windows, usa WSL con Linux NDK o compila manualmente con herramientas Windows.
 
 ## Múltiples ABIs
 
