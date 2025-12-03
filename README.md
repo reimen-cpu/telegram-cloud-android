@@ -3,6 +3,7 @@
 Aplicación Android para gestionar archivos en la nube usando Telegram como backend, no hay limites de tamaño por archivo, no hay limites de almacenamiento total. Tu nube, tus reglas.
 
 Para descargar la apk directamente: https://github.com/reimen-cpu/telegram-cloud-android/releases/tag/v1.0.0
+<<<<<<< HEAD
 
 ## 🚀 Inicio Rápido
 
