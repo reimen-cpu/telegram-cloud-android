@@ -82,19 +82,42 @@ try {
     # Check if bash is available
     $bashPath = Get-Command bash -ErrorAction SilentlyContinue
     if (-not $bashPath) {
+        # Try to find bash in Git for Windows installation
+        $gitBinPaths = @(
+            "C:\Program Files\Git\bin",
+            "C:\Program Files\Git\usr\bin",
+            "C:\Program Files (x86)\Git\bin",
+            "C:\Program Files (x86)\Git\usr\bin",
+            "$env:ProgramFiles\Git\bin",
+            "$env:ProgramFiles\Git\usr\bin",
+            "${env:ProgramFiles(x86)}\Git\bin",
+            "${env:ProgramFiles(x86)}\Git\usr\bin"
+        )
+        
+        foreach ($gitPath in $gitBinPaths) {
+            if (Test-Path "$gitPath\bash.exe") {
+                Write-Host "✓ Bash encontrado en Git for Windows: $gitPath"
+                $env:PATH = "$gitPath;$env:PATH"
+                $bashPath = Get-Command bash -ErrorAction SilentlyContinue
+                break
+            }
+        }
+    }
+    
+    if (-not $bashPath) {
         throw @"
-Bash is not installed. SQLCipher requires bash to build on Windows.
+Bash no encontrado. SQLCipher requiere bash para compilar en Windows.
 
-Options:
-1. Install Git for Windows (includes bash): https://git-scm.com/download/win
-2. Use WSL: wsl --install and build from Linux
-3. Use MSYS2: https://www.msys2.org/
+Opciones:
+1. Instalar Git for Windows (incluye bash): https://git-scm.com/download/win
+2. Usar WSL: wsl --install y compilar desde Linux
+3. Usar MSYS2: https://www.msys2.org/
 
-After installing, restart PowerShell and run this script again.
+Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
 "@
     }
     
-    Write-Host "✓ Bash found: $($bashPath.Source)"
+    Write-Host "✓ Bash encontrado: $($bashPath.Source)"
     
     $installDir = Join-Path $buildDir "installed"
     

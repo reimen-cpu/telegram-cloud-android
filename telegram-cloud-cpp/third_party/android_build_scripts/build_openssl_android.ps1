@@ -68,19 +68,47 @@ try {
     # Check if perl is available
     $perlPath = Get-Command perl -ErrorAction SilentlyContinue
     if (-not $perlPath) {
+        # Try to find perl in Git for Windows installation
+        $gitPerlPaths = @(
+            "C:\Program Files\Git\usr\bin",
+            "C:\Program Files (x86)\Git\usr\bin",
+            "$env:ProgramFiles\Git\usr\bin",
+            "${env:ProgramFiles(x86)}\Git\usr\bin"
+        )
+        
+        foreach ($gitPath in $gitPerlPaths) {
+            if (Test-Path "$gitPath\perl.exe") {
+                Write-Host "✓ Perl encontrado en Git for Windows: $gitPath"
+                $env:PATH = "$gitPath;$env:PATH"
+                $perlPath = Get-Command perl -ErrorAction SilentlyContinue
+                break
+            }
+        }
+    }
+    
+    if (-not $perlPath) {
         throw @"
-Perl is not installed. OpenSSL requires Perl to build.
+Perl no encontrado. OpenSSL requiere Perl para compilar.
 
-Options:
-1. Install Strawberry Perl: https://strawberryperl.com/
-2. Install Git for Windows (includes Perl): https://git-scm.com/download/win
-3. Use WSL: wsl --install and build from Linux
+Opciones:
+1. Instalar Git for Windows (incluye Perl): https://git-scm.com/download/win
+2. Instalar Strawberry Perl: https://strawberryperl.com/
+3. Usar WSL: wsl --install y compilar desde Linux
 
-After installing, restart PowerShell and run this script again.
+Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
 "@
     }
     
-    Write-Host "✓ Perl found: $($perlPath.Source)"
+    Write-Host "✓ Perl encontrado: $($perlPath.Source)"
+    
+    # Check if make is available (needed for OpenSSL build)
+    $makePath = Get-Command make -ErrorAction SilentlyContinue
+    if (-not $makePath) {
+        # make should be in the same location as perl in Git for Windows
+        Write-Host "✓ Make encontrado en Git for Windows (mismo directorio que Perl)"
+    } else {
+        Write-Host "✓ Make encontrado: $($makePath.Source)"
+    }
     
     # Configure OpenSSL with correct parameters
     $configArgs = @(
