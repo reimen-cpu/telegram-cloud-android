@@ -34,8 +34,25 @@ check_command wget
 check_command tar
 echo -e "${GREEN}✓ Todas las herramientas están instaladas${NC}"
 
+# Inicializar submódulos si es necesario
+echo -e "\n${BLUE}[2/6] Verificando submódulos de Git...${NC}"
+TELEGRAM_CPP_PATH="$PROJECT_ROOT/telegram-cloud-cpp"
+
+if [ ! -d "$TELEGRAM_CPP_PATH/.git" ]; then
+    echo "Inicializando submódulos de Git..."
+    cd "$PROJECT_ROOT"
+    if git submodule update --init --recursive; then
+        echo -e "${GREEN}✓ Submódulos inicializados correctamente${NC}"
+    else
+        echo -e "${RED}Error al inicializar submódulos${NC}"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓ Submódulos ya están inicializados${NC}"
+fi
+
 # Verificar NDK
-echo -e "\n${BLUE}[2/5] Verificando Android NDK...${NC}"
+echo -e "\n${BLUE}[3/6] Verificando Android NDK...${NC}"
 if [ -z "$ANDROID_NDK_HOME" ] && [ -z "$NDK_HOME" ]; then
     if [ -f "$PROJECT_ROOT/android/local.properties" ]; then
         NDK_DIR=$(grep "ndk.dir" "$PROJECT_ROOT/android/local.properties" | cut -d'=' -f2 | tr -d ' ')
@@ -80,11 +97,11 @@ echo -e "  Dependencias: $DEPS_DIR"
 echo -e "  Build output: $BUILD_DIR"
 
 # Descargar dependencias
-echo -e "\n${BLUE}[3/5] Descargando dependencias...${NC}"
+echo -e "\n${BLUE}[4/6] Descargando dependencias...${NC}"
 "$SCRIPT_DIR/setup-dependencies.sh"
 
 # Compilar OpenSSL
-echo -e "\n${BLUE}[4/5] Compilando dependencias nativas...${NC}"
+echo -e "\n${BLUE}[5/6] Compilando dependencias nativas...${NC}"
 echo -e "${YELLOW}  [4.1/4.3] Compilando OpenSSL (esto puede tardar ~10 min)...${NC}"
 "$PROJECT_ROOT/telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh" \
   -ndk "$NDK" \
@@ -127,7 +144,7 @@ EOF
 echo -e "${GREEN}✓ local.properties actualizado${NC}"
 
 # Compilar APK
-echo -e "\n${BLUE}[5/5] Compilando APK...${NC}"
+echo -e "\n${BLUE}[6/6] Compilando APK...${NC}"
 cd "$PROJECT_ROOT/android"
 ./gradlew assembleRelease
 
