@@ -41,11 +41,17 @@ TELEGRAM_CPP_PATH="$PROJECT_ROOT/telegram-cloud-cpp"
 if [ ! -d "$TELEGRAM_CPP_PATH/.git" ]; then
     echo "Inicializando submódulos de Git..."
     cd "$PROJECT_ROOT"
+    git submodule sync
     if git submodule update --init --recursive; then
         echo -e "${GREEN}✓ Submódulos inicializados correctamente${NC}"
     else
-        echo -e "${RED}Error al inicializar submódulos${NC}"
-        exit 1
+        echo -e "${YELLOW}Advertencia: Falló la actualización recursiva. Intentando actualización simple...${NC}"
+        if git submodule update --init; then
+             echo -e "${GREEN}✓ Submódulos inicializados correctamente (modo simple)${NC}"
+        else
+            echo -e "${RED}Error al inicializar submódulos${NC}"
+            exit 1
+        fi
     fi
 else
     echo -e "${GREEN}✓ Submódulos ya están inicializados${NC}"

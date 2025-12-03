@@ -81,7 +81,13 @@ if (-not (Test-Path "$telegramCppPath\.git")) {
     Write-Host "Inicializando submódulos de Git..."
     Push-Location $projectRoot
     try {
+        git submodule sync
         git submodule update --init --recursive
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput Yellow "Advertencia: Falló la actualización recursiva. Intentando actualización simple..."
+            git submodule update --init
+        }
+        
         if ($LASTEXITCODE -ne 0) {
             Write-ColorOutput Red "Error al inicializar submódulos"
             exit 1
