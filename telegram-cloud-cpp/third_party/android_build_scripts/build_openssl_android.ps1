@@ -326,18 +326,19 @@ Incluye bash que OpenSSL necesita para detectar compiladores correctamente.
     # Preparar script de configuración para bash
     $installPrefix = $buildDir -replace '\\', '/'
     $ndkPath = $ndk -replace '\\', '/'
-    $ndkBinPath = $ndkBinPath -replace '\\', '/'
+    $ndkBinPathUnix = $ndkBinPath -replace '\\', '/'
     
-    $configScript = @"
+    # Usar @' '@ para evitar expansión de variables en PowerShell
+    $configScript = @'
 #!/bin/bash
-export PATH="$ndkBinPath:`$PATH"
-export ANDROID_NDK_ROOT="$ndkPath"
-export ANDROID_NDK_HOME="$ndkPath"
-cd "$installPrefix"
-perl Configure android-arm64 -D__ANDROID_API__=$api no-shared \
-  --prefix=$installPrefix/installed \
-  --openssldir=$installPrefix/installed
-"@
+export PATH="{0}:$PATH"
+export ANDROID_NDK_ROOT="{1}"
+export ANDROID_NDK_HOME="{1}"
+cd "{2}"
+perl Configure android-arm64 -D__ANDROID_API__={3} no-shared \
+  --prefix={2}/installed \
+  --openssldir={2}/installed
+'@ -f $ndkBinPathUnix, $ndkPath, $installPrefix, $api
     
     $configScriptPath = Join-Path $buildDir "configure_openssl.sh"
     $configScript | Out-File -FilePath $configScriptPath -Encoding ASCII -Force
