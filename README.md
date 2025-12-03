@@ -13,15 +13,15 @@ Para descargar la apk directamente: https://github.com/reimen-cpu/telegram-cloud
 # Linux/macOS
 git clone https://github.com/reimen-cpu/telegram-cloud-android
 cd telegram-cloud-android
-chmod +x *.sh                    # Dar permisos de ejecución
-./build-complete.sh              # Descarga + compila + genera APK
+chmod +x scripts/shell/*.sh      # Dar permisos de ejecución
+./scripts/shell/build-complete.sh   # Descarga + compila + genera APK
 ```
 
 ```powershell
 # Windows (PowerShell como Administrador)
 git clone https://github.com/reimen-cpu/telegram-cloud-android
 cd telegram-cloud-android
-.\build-complete.ps1             # Descarga + compila + genera APK
+.\scripts\powershell\build-complete.ps1   # Descarga + compila + genera APK
 ```
 
 El script automático:
@@ -42,8 +42,8 @@ git clone https://github.com/reimen-cpu/telegram-cloud-android
 cd telegram-cloud-android
 
 # 2. Descargar dependencias
-chmod +x setup-dependencies.sh   # Linux/macOS
-./setup-dependencies.sh
+chmod +x scripts/shell/setup-dependencies.sh   # Linux/macOS
+./scripts/shell/setup-dependencies.sh
 
 # 3. Compilar dependencias nativas (ver guía completa abajo)
 
@@ -83,7 +83,7 @@ cd android
 4. **CMake 3.22** o superior (incluido con Android SDK)
 5. **Git** para clonar el repositorio
 
-**Windows:** Requiere herramientas adicionales (Perl, Bash). Ver [REQUISITOS_WINDOWS.md](REQUISITOS_WINDOWS.md) para guía completa.
+**Windows:** Requiere herramientas adicionales (Perl, Bash). Ver [REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) para guía completa.
 
 ### Paso 1: Clonar el Repositorio
 
@@ -102,12 +102,12 @@ Usa el script incluido que descarga todo automáticamente:
 
 ```bash
 # Linux/macOS
-./setup-dependencies.sh
+./scripts/shell/setup-dependencies.sh
 ```
 
 ```powershell
 # Windows (PowerShell)
-.\setup-dependencies.ps1
+.\scripts\powershell\setup-dependencies.ps1
 ```
 
 Esto descargará las fuentes en `~/android-native-sources` (Linux/macOS) o `%USERPROFILE%\android-native-sources` (Windows).
@@ -379,11 +379,12 @@ Para reportar bugs o solicitar features, por favor abre un issue en GitHub.
 - Requiere conexión a internet para funcionar
 - La sincronización funciona mejor con conexión estable
 
-## Documentación Adicional
+## 📚 Documentación Adicional
 
-- [REQUISITOS_WINDOWS.md](REQUISITOS_WINDOWS.md) - **Requisitos y guía para compilar en Windows**
-- [BUILD_NATIVE_DEPENDENCIES.md](BUILD_NATIVE_DEPENDENCIES.md) - Guía detallada de compilación de dependencias nativas
-- [FDROID_COMPLIANCE.md](FDROID_COMPLIANCE.md) - Verificación de cumplimiento con políticas de F-Droid
+- [REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) - **Requisitos y guía para compilar en Windows**
+- [BUILD_NATIVE_DEPENDENCIES.md](docs/BUILD_NATIVE_DEPENDENCIES.md) - Guía detallada de compilación de dependencias nativas
+- [FDROID_COMPLIANCE.md](docs/FDROID_COMPLIANCE.md) - Verificación de cumplimiento con políticas de F-Droid
+- [ESTRUCTURA_REPOSITORIO.md](docs/ESTRUCTURA_REPOSITORIO.md) - Estructura y organización del repositorio
 - [telegram-cloud-cpp/README-android.md](telegram-cloud-cpp/README-android.md) - Detalles técnicos de integración JNI
 
 ## Enlaces relacionados

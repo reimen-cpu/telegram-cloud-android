@@ -9,6 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Validate required parameters
 if (-not $ndk -or -not $opensslDir -or -not $srcPath -or -not $outDir) {
     Write-Error "Usage: -ndk <ndk-path> -opensslDir <openssl-build-dir> -srcPath <sqlcipher-source> -outDir <output-dir>"
     Write-Host "Example: .\build_sqlcipher_android.ps1 -ndk C:\Android\ndk\25.2.9519653 -opensslDir C:\builds\openssl\build_arm64_v8a -srcPath C:\sources\sqlcipher -outDir C:\builds\sqlcipher"
@@ -16,17 +17,22 @@ if (-not $ndk -or -not $opensslDir -or -not $srcPath -or -not $outDir) {
 }
 
 if (-not (Test-Path $srcPath)) {
-    Write-Error "SQLCipher source no encontrado: $srcPath"
+    Write-Error "SQLCipher source not found: $srcPath"
     exit 1
 }
 
-if (-not (Test-Path "$opensslDir/installed")) {
-    Write-Error "OpenSSL compilado no encontrado en: $opensslDir/installed"
-    Write-Host "Asegúrate de compilar OpenSSL primero."
+if (-not (Test-Path $ndk)) {
+    Write-Error "NDK path not found: $ndk"
     exit 1
 }
 
-# Mapear ABI a tripleta de compilador
+if (-not (Test-Path $opensslDir)) {
+    Write-Error "OpenSSL build directory not found: $opensslDir"
+    Write-Host "Make sure to build OpenSSL first."
+    exit 1
+}
+
+# Map ABI to compiler target
 $targetMap = @{
     "arm64-v8a" = "aarch64-linux-android"
     "armeabi-v7a" = "armv7a-linux-androideabi"
@@ -35,7 +41,7 @@ $targetMap = @{
 }
 
 if (-not $targetMap.ContainsKey($abi)) {
-    Write-Error "ABI no soportado: $abi"
+    Write-Error "Unsupported ABI: $abi. Use: arm64-v8a, armeabi-v7a, x86, x86_64"
     exit 1
 }
 
@@ -43,16 +49,16 @@ $target = $targetMap[$abi]
 $abiNormalized = $abi -replace "-", "_"
 $buildDir = Join-Path $outDir "build_$abiNormalized"
 
-# Limpiar build anterior
+# Clean previous build
 if (Test-Path $buildDir) {
-    Write-Host "Limpiando build anterior..."
+    Write-Host "Cleaning previous build..."
     Remove-Item -Recurse -Force $buildDir
 }
 
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
-# Copiar fuentes a build dir
-Write-Host "Copiando fuentes de SQLCipher..."
+# Copy sources to build dir
+Write-Host "Copying SQLCipher sources..."
 Copy-Item -Recurse -Force "$srcPath/*" $buildDir
 
 $ndkToolchain = Join-Path $ndk "toolchains/llvm/prebuilt/windows-x86_64"
@@ -61,7 +67,7 @@ $ar = Join-Path $ndkToolchain "bin/llvm-ar.exe"
 $ranlib = Join-Path $ndkToolchain "bin/llvm-ranlib.exe"
 
 if (-not (Test-Path $cc)) {
-    Write-Error "Compilador no encontrado: $cc"
+    Write-Error "Compiler not found: $cc"
     exit 1
 }
 
@@ -71,37 +77,35 @@ $env:PATH = "$ndkToolchain/bin;$env:PATH"
 Push-Location $buildDir
 
 try {
-    Write-Host "Configurando SQLCipher para $abi (API $api)..."
+    Write-Host "Configuring SQLCipher for $abi (API $api)..."
     
-    # Verificar si bash está disponible (necesario para configure)
+    # Check if bash is available
     $bashPath = Get-Command bash -ErrorAction SilentlyContinue
     if (-not $bashPath) {
-        Write-Error @"
-Bash no está instalado. SQLCipher requiere bash para compilar en Windows.
+        throw @"
+Bash is not installed. SQLCipher requires bash to build on Windows.
 
-Opciones:
-1. Instalar Git for Windows (incluye bash): https://git-scm.com/download/win
-2. Usar WSL: wsl --install y compilar desde Linux
-3. Usar MSYS2: https://www.msys2.org/
+Options:
+1. Install Git for Windows (includes bash): https://git-scm.com/download/win
+2. Use WSL: wsl --install and build from Linux
+3. Use MSYS2: https://www.msys2.org/
 
-Después de instalar, reinicia PowerShell y vuelve a ejecutar este script.
+After installing, restart PowerShell and run this script again.
 "@
-        exit 1
     }
     
-    Write-Host "✓ Bash encontrado: $($bashPath.Source)"
+    Write-Host "✓ Bash found: $($bashPath.Source)"
     
-    $opensslInstall = "$opensslDir/installed"
     $installDir = Join-Path $buildDir "installed"
     
-    # Crear script de configuración para bash
+    # Create configuration script for bash
     $configScript = @"
 #!/bin/bash
 export CC="$($cc -replace '\\', '/')"
 export AR="$($ar -replace '\\', '/')"
 export RANLIB="$($ranlib -replace '\\', '/')"
-export CFLAGS="-fPIC -DSQLITE_HAS_CODEC -I$($opensslInstall -replace '\\', '/')/include"
-export LDFLAGS="-L$($opensslInstall -replace '\\', '/')/lib"
+export CFLAGS="-fPIC -DSQLITE_HAS_CODEC -I$($opensslDir -replace '\\', '/')/include"
+export LDFLAGS="-L$($opensslDir -replace '\\', '/')/lib"
 export LIBS="-lcrypto"
 
 ./configure \
@@ -118,22 +122,24 @@ make install
     
     $configScript | Out-File -FilePath "build_script.sh" -Encoding ASCII
     
-    Write-Host "Ejecutando configure y make..."
+    Write-Host "Running configure and make..."
     & bash ./build_script.sh
     
     if ($LASTEXITCODE -ne 0) {
-        throw "Build falló con código: $LASTEXITCODE"
+        throw "Build failed with exit code: $LASTEXITCODE"
     }
     
-    Write-Host "`n✓ SQLCipher compilado exitosamente"
-    Write-Host "Ubicación: $installDir"
+    Write-Host "`nSQLCipher build finished successfully"
+    Write-Host "Location: $installDir"
     Write-Host "Include: $installDir/include"
     Write-Host "Libs: $installDir/lib"
     
 } catch {
-    Write-Error "Error compilando SQLCipher: $_"
-    exit 1
-} finally {
+    Write-Error "Error building SQLCipher: $_"
     Pop-Location
     $env:PATH = $PATH_BACKUP
+    exit 1
 }
+
+Pop-Location
+$env:PATH = $PATH_BACKUP
