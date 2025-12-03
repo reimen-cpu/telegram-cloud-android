@@ -88,6 +88,11 @@ Write-ColorOutput Yellow "  [4.1/4.3] Compilando OpenSSL (esto puede tardar ~10 
     -srcPath "$DEPS_DIR\openssl-3.2.0" `
     -outDir "$BUILD_DIR\openssl"
 
+if ($LASTEXITCODE -ne 0) {
+    Write-ColorOutput Red "Error compilando OpenSSL"
+    exit 1
+}
+
 # Compilar libcurl
 Write-ColorOutput Yellow "  [4.2/4.3] Compilando libcurl..."
 $ABI_NORMALIZED = $ABI -replace "-", "_"
@@ -99,6 +104,11 @@ $ABI_NORMALIZED = $ABI -replace "-", "_"
     -srcPath "$DEPS_DIR\curl-8.7.1" `
     -outDir "$BUILD_DIR\libcurl"
 
+if ($LASTEXITCODE -ne 0) {
+    Write-ColorOutput Red "Error compilando libcurl"
+    exit 1
+}
+
 # Compilar SQLCipher
 Write-ColorOutput Yellow "  [4.3/4.3] Compilando SQLCipher..."
 & .\telegram-cloud-cpp\third_party\android_build_scripts\build_sqlcipher_android.ps1 `
@@ -109,15 +119,20 @@ Write-ColorOutput Yellow "  [4.3/4.3] Compilando SQLCipher..."
     -srcPath "$DEPS_DIR\sqlcipher" `
     -outDir "$BUILD_DIR\sqlcipher"
 
+if ($LASTEXITCODE -ne 0) {
+    Write-ColorOutput Red "Error compilando SQLCipher"
+    exit 1
+}
+
 # Actualizar local.properties
 Write-ColorOutput Yellow "`nActualizando android\local.properties..."
 $localPropsPath = "android\local.properties"
 $propsContent = @"
 
 # Rutas de dependencias nativas (generadas por build-complete.ps1)
-native.openssl.$ABI=$BUILD_DIR\openssl\build_$ABI_NORMALIZED
-native.curl.$ABI=$BUILD_DIR\libcurl\build_$ABI_NORMALIZED
-native.sqlcipher.$ABI=$BUILD_DIR\sqlcipher\build_$ABI_NORMALIZED
+native.openssl.$ABI=$BUILD_DIR\openssl\build_$ABI_NORMALIZED\installed
+native.curl.$ABI=$BUILD_DIR\libcurl\build_$ABI_NORMALIZED\installed
+native.sqlcipher.$ABI=$BUILD_DIR\sqlcipher\build_$ABI_NORMALIZED\installed
 "@
 
 Add-Content -Path $localPropsPath -Value $propsContent

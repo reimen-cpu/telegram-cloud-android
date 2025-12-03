@@ -1,40 +1,113 @@
 param(
     [string]$ndk,
     [string]$abi = "arm64-v8a",
-    [int]$api = 24,
+    [int]$api = 28,
     [string]$opensslDir,
     [string]$srcPath,
-    [string]$outDir = "$(Join-Path $PSScriptRoot 'out' )"
+    [string]$outDir
 )
 
-if (-not $ndk) { Write-Error "Please pass -ndk <path-to-ndk>"; exit 1 }
-if (-not (Test-Path $srcPath)) { Write-Error "curl source path not found: $srcPath"; exit 1 }
-if (-not (Test-Path $opensslDir)) { Write-Error "OpenSSL dir not found: $opensslDir"; exit 1 }
+$ErrorActionPreference = "Stop"
 
-New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-$buildDir = Join-Path $outDir "build_$abi"
+if (-not $ndk -or -not $opensslDir -or -not $srcPath) {
+    Write-Error "Uso: -ndk <ndk-path> -opensslDir <openssl-build-dir> -srcPath <curl-source> -outDir <output-dir>"
+    exit 1
+}
+
+if (-not (Test-Path $srcPath)) {
+    Write-Error "libcurl source no encontrado: $srcPath"
+    exit 1
+}
+
+if (-not (Test-Path "$opensslDir/installed")) {
+    Write-Error "OpenSSL compilado no encontrado en: $opensslDir/installed"
+    Write-Host "Asegúrate de compilar OpenSSL primero."
+    exit 1
+}
+
+$abiNormalized = $abi -replace "-", "_"
+$buildDir = Join-Path $outDir "build_$abiNormalized"
+
+# Limpiar build anterior
+if (Test-Path $buildDir) {
+    Write-Host "Limpiando build anterior..."
+    Remove-Item -Recurse -Force $buildDir
+}
+
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+$installDir = Join-Path $buildDir "installed"
+New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
 $toolchain = Join-Path $ndk "build/cmake/android.toolchain.cmake"
-if (-not (Test-Path $toolchain)) { Write-Error "CMake toolchain not found at $toolchain"; exit 1 }
+if (-not (Test-Path $toolchain)) {
+    Write-Error "CMake toolchain no encontrado: $toolchain"
+    exit 1
+}
+
+# Verificar CMake
+$cmakePath = Get-Command cmake -ErrorAction SilentlyContinue
+if (-not $cmakePath) {
+    Write-Error "CMake no está instalado. Instálalo desde: https://cmake.org/download/"
+    exit 1
+}
 
 Push-Location $buildDir
 
-Write-Host "Configuring libcurl build for ABI=$abi API=$api, OPENSSL_ROOT=$opensslDir"
-
-cmake -G "Ninja" `
-    -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
-    -DANDROID_ABI="$abi" `
-    -DANDROID_PLATFORM="android-$api" `
-    -DCMAKE_BUILD_TYPE=Release `
-    -DHTTP_ONLY=OFF `
-    -DCURL_USE_OPENSSL=ON `
-    -DOPENSSL_ROOT_DIR="$opensslDir" `
-    -DCMAKE_INSTALL_PREFIX="$buildDir/install" `
-    -S "$srcPath" -B .
-
-cmake --build . --config Release -- -j
-cmake --install . --config Release
-
-Write-Host "libcurl build finished. Installed to $buildDir/install"
-Pop-Location
+try {
+    Write-Host "Configurando libcurl para $abi (API $api)..."
+    Write-Host "OpenSSL: $opensslDir/installed"
+    
+    $cmakeArgs = @(
+        "-G", "Ninja",
+        "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
+        "-DANDROID_ABI=$abi",
+        "-DANDROID_PLATFORM=android-$api",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_PREFIX=$installDir",
+        "-DBUILD_CURL_EXE=OFF",
+        "-DBUILD_SHARED_LIBS=OFF",
+        "-DCURL_STATICLIB=ON",
+        "-DCURL_USE_OPENSSL=ON",
+        "-DOPENSSL_ROOT_DIR=$opensslDir/installed",
+        "-DOPENSSL_INCLUDE_DIR=$opensslDir/installed/include",
+        "-DOPENSSL_CRYPTO_LIBRARY=$opensslDir/installed/lib/libcrypto.a",
+        "-DOPENSSL_SSL_LIBRARY=$opensslDir/installed/lib/libssl.a",
+        "-DCURL_DISABLE_LDAP=ON",
+        "-DCURL_DISABLE_LDAPS=ON",
+        "-DCURL_CA_BUNDLE=none",
+        "-DCURL_CA_PATH=none",
+        "-S", $srcPath,
+        "-B", "."
+    )
+    
+    & cmake @cmakeArgs
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "CMake configure falló con código: $LASTEXITCODE"
+    }
+    
+    Write-Host "Compilando libcurl..."
+    & cmake --build . --config Release --parallel $([Environment]::ProcessorCount)
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Build falló con código: $LASTEXITCODE"
+    }
+    
+    Write-Host "Instalando libcurl..."
+    & cmake --install . --config Release
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Install falló con código: $LASTEXITCODE"
+    }
+    
+    Write-Host "`n✓ libcurl compilado exitosamente"
+    Write-Host "Ubicación: $installDir"
+    Write-Host "Include: $installDir/include"
+    Write-Host "Libs: $installDir/lib"
+    
+} catch {
+    Write-Error "Error compilando libcurl: $_"
+    exit 1
+} finally {
+    Pop-Location
+}
