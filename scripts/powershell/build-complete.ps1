@@ -14,8 +14,8 @@ Write-ColorOutput Green "╔═════════════════�
 Write-ColorOutput Green "║   Telegram Cloud Android - Build Complete         ║"
 Write-ColorOutput Green "╚════════════════════════════════════════════════════╝"
 
-# Verificar Git y Bash
-Write-Host "`n[1/5] Verificando herramientas necesarias..."
+# Verificar Git
+Write-Host "`n[1/4] Verificando herramientas necesarias..."
 try {
     git --version | Out-Null
     Write-ColorOutput Green "✓ Git está instalado"
@@ -24,84 +24,8 @@ try {
     exit 1
 }
 
-# Verificar Bash (necesario para compilar dependencias nativas)
-$bashPath = $null
-$bash = Get-Command bash -ErrorAction SilentlyContinue
-if ($bash) {
-    $bashPath = $bash.Source
-    Write-ColorOutput Green "✓ Bash disponible: $bashPath"
-} else {
-    # Buscar en ubicaciones comunes de Git for Windows
-    $gitBashPaths = @(
-        "C:\Program Files\Git\bin\bash.exe",
-        "C:\Program Files (x86)\Git\bin\bash.exe",
-        "$env:ProgramFiles\Git\bin\bash.exe",
-        "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
-    )
-    
-    foreach ($path in $gitBashPaths) {
-        if (Test-Path $path) {
-            $bashPath = $path
-            Write-ColorOutput Green "✓ Bash encontrado: $bashPath"
-            break
-        }
-    }
-}
-
-if (-not $bashPath) {
-    # Verificar si WSL está disponible
-    $wsl = Get-Command wsl -ErrorAction SilentlyContinue
-    if ($wsl) {
-        Write-ColorOutput Yellow "⚠ Bash no encontrado, pero WSL está disponible"
-        Write-Host "  Nota: La compilación puede ser más lenta con WSL"
-        Write-Host "  Recomendado: Instalar Git for Windows para mejor rendimiento"
-    } else {
-        Write-ColorOutput Red @"
-Error: Bash no encontrado. Necesario para compilar dependencias nativas.
-
-RECOMENDADO: Instalar Git for Windows
-  https://git-scm.com/download/win
-  Incluye bash, perl, y make necesarios para OpenSSL.
-
-ALTERNATIVA: Instalar WSL
-  wsl --install
-
-Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
-"@
-        exit 1
-    }
-}
-
-# Inicializar submódulos si es necesario
-Write-Host "`n[2/6] Verificando submódulos de Git..."
-$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$telegramCppPath = Join-Path $projectRoot "telegram-cloud-cpp"
-
-if (-not (Test-Path "$telegramCppPath\.git")) {
-    Write-Host "Inicializando submódulos de Git..."
-    Push-Location $projectRoot
-    try {
-        git submodule sync
-        git submodule update --init --recursive
-        if ($LASTEXITCODE -ne 0) {
-            Write-ColorOutput Yellow "Advertencia: Falló la actualización recursiva. Intentando actualización simple..."
-            git submodule update --init
-        }
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-ColorOutput Red "Error al inicializar submódulos"
-            exit 1
-        }
-        Write-ColorOutput Green "✓ Submódulos inicializados correctamente"
-    } finally {
-        Pop-Location
-    }
-} else {
-    Write-ColorOutput Green "✓ Submódulos ya están inicializados"
-}
-
 # Verificar NDK
-Write-Host "`n[3/6] Verificando Android NDK..."
+Write-Host "`n[2/4] Verificando Android NDK..."
 $NDK = $env:ANDROID_NDK_HOME
 if (-not $NDK) {
     $NDK = $env:NDK_HOME
@@ -151,11 +75,11 @@ Write-Host "  Dependencias: $DEPS_DIR"
 Write-Host "  Build output: $BUILD_DIR"
 
 # Descargar dependencias
-Write-Host "`n[4/6] Descargando dependencias..."
+Write-Host "`n[3/4] Descargando dependencias..."
 & "$PSScriptRoot\setup-dependencies.ps1"
 
 # Compilar OpenSSL
-Write-Host "`n[5/6] Compilando dependencias nativas..."
+Write-Host "`n[4/4] Compilando dependencias nativas..."
 Write-ColorOutput Yellow "  [4.1/4.3] Compilando OpenSSL (esto puede tardar ~10 min)..."
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 & "$projectRoot\telegram-cloud-cpp\third_party\android_build_scripts\build_openssl_android.ps1" `
@@ -215,8 +139,8 @@ native.sqlcipher.$ABI=$BUILD_DIR\sqlcipher\build_$ABI_NORMALIZED\installed
 Add-Content -Path $localPropsPath -Value $propsContent
 Write-ColorOutput Green "✓ local.properties actualizado"
 
-# Compilar APK
-Write-Host "`n[6/6] Compilando APK..."
+# Compilar APK (Gradle)
+Write-Host "`nCompilando APK con Gradle..."
 Set-Location (Join-Path $projectRoot "android")
 & .\gradlew.bat assembleRelease
 
