@@ -293,6 +293,18 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     Write-Host "  ar.exe, ranlib.exe copiados"
     Write-Host "  Wrapper dir en PATH: $wrapperDir"
     
+    # Configurar variables de entorno que OpenSSL Configure lee
+    # OpenSSL respeta estas variables en lugar de buscar compiladores
+    $env:CC = $compilerReal
+    $env:CXX = $compilerPlusReal  
+    $env:AR = $arReal
+    $env:RANLIB = $ranlibReal
+    $env:CROSS_COMPILE = ""  # Vacío para evitar que busque gcc
+    
+    Write-Host "✓ Variables de entorno del compilador configuradas"
+    Write-Host "  CC=$env:CC"
+    Write-Host "  AR=$env:AR"
+    
     # Configure OpenSSL with correct parameters
     $installPrefix = $buildDir -replace '\\', '/'
     $configArgs = @(
