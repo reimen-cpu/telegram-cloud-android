@@ -212,7 +212,8 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     }
     
     # Configure NDK environment variables for OpenSSL
-    # NDK r21+ uses clang, not gcc. OpenSSL needs explicit CC/AR/RANLIB.
+    # Problem: OpenSSL busca "aarch64-linux-android-clang" pero NDK r25c tiene "aarch64-linux-android28-clang"
+    # Solución: Crear wrappers temporales sin el número API
     $target = switch ($abi) {
         "arm64-v8a" { "aarch64-linux-android" }
         "armeabi-v7a" { "armv7a-linux-androideabi" }
@@ -220,22 +221,35 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
         "x86_64" { "x86_64-linux-android" }
     }
     
-    # Set compiler environment variables (OpenSSL Configure reads these)
-    $env:CC = Join-Path $ndkBinPath "$target$api-clang.cmd"
-    $env:CXX = Join-Path $ndkBinPath "$target$api-clang++.cmd"
-    $env:AR = Join-Path $ndkBinPath "llvm-ar.exe"
-    $env:RANLIB = Join-Path $ndkBinPath "llvm-ranlib.exe"
+    # Crear directorio temporal para wrappers
+    $wrapperDir = Join-Path $buildDir "ndk_wrappers"
+    New-Item -ItemType Directory -Force -Path $wrapperDir | Out-Null
     
-    # Verify compiler exists
-    if (-not (Test-Path $env:CC)) {
-        throw "NDK compiler not found: $env:CC`nVerify NDK installation."
+    # Crear wrappers que llamen a los compiladores reales con API level
+    $compilerReal = Join-Path $ndkBinPath "$target$api-clang.cmd"
+    $compilerPlusReal = Join-Path $ndkBinPath "$target$api-clang++.cmd"
+    
+    if (-not (Test-Path $compilerReal)) {
+        throw "NDK compiler not found: $compilerReal`nVerify NDK installation."
     }
-    Write-Host "✓ NDK compiler configurado"
-    Write-Host "  CC: $(Split-Path -Leaf $env:CC)"
-    Write-Host "  AR: $(Split-Path -Leaf $env:AR)"
+    
+    # Wrapper para clang (sin número API en el nombre)
+    $clangWrapper = Join-Path $wrapperDir "$target-clang.cmd"
+    "@echo off`n`"$compilerReal`" %*" | Out-File -FilePath $clangWrapper -Encoding ASCII
+    
+    # Wrapper para clang++
+    $clangPlusWrapper = Join-Path $wrapperDir "$target-clang++.cmd"
+    "@echo off`n`"$compilerPlusReal`" %*" | Out-File -FilePath $clangPlusWrapper -Encoding ASCII
+    
+    # Agregar wrapper dir al PATH (ANTES del NDK real)
+    $env:PATH = "$wrapperDir;$env:PATH"
+    
+    Write-Host "✓ NDK compiler wrappers creados"
+    Write-Host "  $target-clang.cmd → $target$api-clang.cmd"
+    Write-Host "  Wrapper dir: $wrapperDir"
+    Write-Host "  ANDROID_NDK_HOME: $env:ANDROID_NDK_HOME"
     
     # Configure OpenSSL with correct parameters
-    # Use forward slashes for Unix-style paths (OpenSSL expects this)
     $installPrefix = $buildDir -replace '\\', '/'
     $configArgs = @(
         $opensslTarget,
@@ -245,7 +259,9 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
         "--openssldir=$installPrefix/installed"
     )
     
-    Write-Host "Running: perl Configure $($configArgs -join ' ')"
+    Write-Host "`nEjecutando OpenSSL Configure..."
+    Write-Host "perl Configure $($configArgs -join ' ')"
+    Write-Host "`nEsto puede tardar 1-2 minutos...`n"
     & perl Configure @configArgs
     
     if ($LASTEXITCODE -ne 0) {
