@@ -322,26 +322,55 @@ Incluye bash que OpenSSL necesita para detectar compiladores correctamente.
     }
     
     Write-Host "✓ Bash encontrado: $bashPath"
+    Write-Host ""
     
     # Preparar script de configuración para bash
     $installPrefix = $buildDir -replace '\\', '/'
     $ndkPath = $ndk -replace '\\', '/'
     $ndkBinPathUnix = $ndkBinPath -replace '\\', '/'
     
+    # CRÍTICO: Configurar PATH para usar Strawberry Perl (completo) en lugar de Git Perl (mínimo)
+    # Git Perl le falta Locale::Maketext::Simple que OpenSSL necesita
+    $strawberryPerlBin = ""
+    $strawberryMakeBin = ""
+    
+    # Buscar Strawberry Perl
+    $strawberryPaths = @("C:\Strawberry\perl\bin", "$env:SystemDrive\Strawberry\perl\bin")
+    foreach ($sbPath in $strawberryPaths) {
+        if (Test-Path "$sbPath\perl.exe") {
+            $strawberryPerlBin = $sbPath -replace '\\', '/'
+            $strawberryMakeBin = ($sbPath -replace 'perl\\bin', 'c\bin') -replace '\\', '/'
+            break
+        }
+    }
+    
+    if (-not $strawberryPerlBin) {
+        throw "Strawberry Perl no encontrado. Requerido para compilar OpenSSL."
+    }
+    
     # Usar @' '@ para evitar expansión de variables en PowerShell
     $configScript = @'
 #!/bin/bash
-export PATH="{0}:$PATH"
-export ANDROID_NDK_ROOT="{1}"
-export ANDROID_NDK_HOME="{1}"
-cd "{2}"
-perl Configure android-arm64 -D__ANDROID_API__={3} no-shared \
-  --prefix={2}/installed \
-  --openssldir={2}/installed
-'@ -f $ndkBinPathUnix, $ndkPath, $installPrefix, $api
+# CRITICAL: Put Strawberry Perl FIRST (has all modules OpenSSL needs)
+# Then NDK bin, then rest of PATH
+export PATH="{0}:{1}:{2}:$PATH"
+export ANDROID_NDK_ROOT="{3}"
+export ANDROID_NDK_HOME="{3}"
+cd "{4}"
+echo "Using Perl: $(which perl)"
+echo "Using make: $(which make)"
+perl Configure android-arm64 -D__ANDROID_API__={5} no-shared \
+  --prefix={4}/installed \
+  --openssldir={4}/installed
+'@ -f $strawberryPerlBin, $strawberryMakeBin, $ndkBinPathUnix, $ndkPath, $installPrefix, $api
     
     $configScriptPath = Join-Path $buildDir "configure_openssl.sh"
     $configScript | Out-File -FilePath $configScriptPath -Encoding ASCII -Force
+    
+    Write-Host "✓ PATH configurado para bash:"
+    Write-Host "  1. Strawberry Perl: $strawberryPerlBin"
+    Write-Host "  2. Strawberry Make: $strawberryMakeBin"
+    Write-Host "  3. NDK toolchain: $ndkBinPathUnix"
     
     Write-Host "`nEjecutando OpenSSL Configure desde bash..."
     Write-Host "Script: $configScriptPath"
