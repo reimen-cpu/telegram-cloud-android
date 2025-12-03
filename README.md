@@ -14,8 +14,8 @@ Descarga la APK directamente desde: https://github.com/reimen-cpu/telegram-cloud
 
 **Requisitos previos:**
 - **Windows:** 
-  - Strawberry Perl: https://strawberryperl.com/ (necesario para OpenSSL)
-  - Git for Windows: https://git-scm.com/download/win (necesario para Bash/Make)
+  - Strawberry Perl: https://strawberryperl.com/ (incluye Perl + Make para OpenSSL)
+  - Git for Windows: https://git-scm.com/download/win (incluye Bash para SQLCipher)
 - **Linux/macOS:** `git`, `wget`, `tar`, `perl`, `make`
 - Android SDK + NDK r25c (25.2.9519653)
 
@@ -42,7 +42,7 @@ El script automático:
 
 **Tiempo estimado:** 20-40 minutos (dependiendo de tu hardware).
 
-**Nota Windows:** Requiere Strawberry Perl (para OpenSSL) y Git for Windows (para Bash/Make). El Perl de Git for Windows es mínimo y le faltan módulos necesarios.
+**Nota Windows:** Requiere Strawberry Perl (incluye Perl + Make) y Git for Windows (incluye Bash). Ambos se auto-detectan.
 
 ## Características
 
@@ -71,7 +71,7 @@ El script automático:
 4. **CMake 3.22** o superior (incluido con Android SDK)
 5. **Git** para clonar el repositorio
 
-**Windows:** Requiere Strawberry Perl + Git for Windows. Ver [docs/REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) para guía completa.
+**Windows:** Requiere Strawberry Perl (Perl + Make) + Git for Windows (Bash). Ver [docs/REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) para guía completa.
 
 ### Paso 1: Clonar el Repositorio
 
@@ -250,13 +250,14 @@ F-Droid compilará automáticamente todas las dependencias desde fuente. Ver [do
 - Instala NDK r25c desde Android Studio: Tools → SDK Manager → SDK Tools → NDK (Side by side)
 - Verifica la ruta en `local.properties`
 
-**Error: Perl not found o módulos faltantes (Windows)**
-- Instala Strawberry Perl: https://strawberryperl.com/
-- El Perl de Git for Windows es incompleto y no sirve para OpenSSL
+**Error: Perl/Make not found (Windows)**
+- Instala Strawberry Perl: https://strawberryperl.com/ (incluye Perl + gmake)
 - Reinicia PowerShell después de instalar
+- El script auto-detecta gmake de Strawberry Perl
 
 **Error: Bash not found (Windows)**
-- Instala Git for Windows (incluye bash): https://git-scm.com/download/win
+- Instala Git for Windows: https://git-scm.com/download/win (incluye bash)
+- El script auto-detecta bash de Git for Windows
 
 **Error en scripts de compilación**
 - Verifica que los scripts tienen permisos de ejecución (Linux/macOS): `chmod +x scripts/shell/*.sh`

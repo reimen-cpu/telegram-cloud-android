@@ -130,22 +130,69 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     
     Write-Host "✓ Perl: $($perlPath.Source)"
     
-    # Check if make is available
+    # Check if make is available (OpenSSL needs GNU make)
     $makePath = Get-Command make -ErrorAction SilentlyContinue
+    
     if (-not $makePath) {
+        # Try gmake (common in Strawberry Perl)
+        $makePath = Get-Command gmake -ErrorAction SilentlyContinue
+        if ($makePath) {
+            Set-Alias -Name make -Value gmake -Scope Script
+            Write-Host "✓ Make: gmake (Strawberry Perl)"
+        }
+    }
+    
+    if (-not $makePath) {
+        # Search in Strawberry Perl installation
+        $strawberryMakePaths = @(
+            "C:\Strawberry\c\bin\gmake.exe",
+            "C:\Strawberry\c\bin\mingw32-make.exe"
+        )
+        
+        foreach ($makeBin in $strawberryMakePaths) {
+            if (Test-Path $makeBin) {
+                $strawberryBinDir = Split-Path -Parent $makeBin
+                $env:PATH = "$strawberryBinDir;$env:PATH"
+                $makeCmd = Split-Path -Leaf $makeBin
+                $makeCmd = $makeCmd -replace '\.exe$', ''
+                Set-Alias -Name make -Value $makeCmd -Scope Script
+                Write-Host "✓ Make: $makeCmd (Strawberry Perl)"
+                $makePath = Get-Command $makeCmd -ErrorAction SilentlyContinue
+                break
+            }
+        }
+    }
+    
+    if (-not $makePath) {
+        # Try Git for Windows
         $gitBinPaths = @(
             "C:\Program Files\Git\usr\bin",
-            "C:\Program Files (x86)\Git\usr\bin"
+            "C:\Program Files (x86)\Git\usr\bin",
+            "$env:ProgramFiles\Git\usr\bin"
         )
         foreach ($gitPath in $gitBinPaths) {
             if (Test-Path "$gitPath\make.exe") {
                 $env:PATH = "$gitPath;$env:PATH"
                 Write-Host "✓ Make encontrado en Git for Windows"
+                $makePath = Get-Command make -ErrorAction SilentlyContinue
                 break
             }
         }
-    } else {
-        Write-Host "✓ Make: $($makePath.Source)"
+    }
+    
+    if (-not $makePath) {
+        throw @"
+Make no encontrado. OpenSSL requiere GNU Make para compilar.
+
+RECOMENDADO:
+- Strawberry Perl incluye gmake: https://strawberryperl.com/
+  Ya tienes Perl, verifica que C:\Strawberry\c\bin esté en PATH
+
+Alternativa:
+- Instalar Git for Windows: https://git-scm.com/download/win
+
+Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
+"@
     }
     
     # Configure OpenSSL with correct parameters
