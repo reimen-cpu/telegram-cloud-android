@@ -13,7 +13,9 @@ Descarga la APK directamente desde: https://github.com/reimen-cpu/telegram-cloud
 ### Opción B: Build Automático desde Código Fuente
 
 **Requisitos previos:**
-- **Windows:** Git for Windows (incluye Perl + Bash): https://git-scm.com/download/win
+- **Windows:** 
+  - Strawberry Perl: https://strawberryperl.com/ (necesario para OpenSSL)
+  - Git for Windows: https://git-scm.com/download/win (necesario para Bash/Make)
 - **Linux/macOS:** `git`, `wget`, `tar`, `perl`, `make`
 - Android SDK + NDK r25c (25.2.9519653)
 
@@ -40,7 +42,7 @@ El script automático:
 
 **Tiempo estimado:** 20-40 minutos (dependiendo de tu hardware).
 
-**Nota:** En Windows, asegúrate de tener Git for Windows instalado. Incluye Perl y Bash necesarios para compilar OpenSSL y SQLCipher.
+**Nota Windows:** Requiere Strawberry Perl (para OpenSSL) y Git for Windows (para Bash/Make). El Perl de Git for Windows es mínimo y le faltan módulos necesarios.
 
 ## Características
 
@@ -69,7 +71,7 @@ El script automático:
 4. **CMake 3.22** o superior (incluido con Android SDK)
 5. **Git** para clonar el repositorio
 
-**Windows:** Requiere Git for Windows (incluye Perl + Bash). Ver [docs/REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) para guía completa.
+**Windows:** Requiere Strawberry Perl + Git for Windows. Ver [docs/REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) para guía completa.
 
 ### Paso 1: Clonar el Repositorio
 
@@ -248,9 +250,10 @@ F-Droid compilará automáticamente todas las dependencias desde fuente. Ver [do
 - Instala NDK r25c desde Android Studio: Tools → SDK Manager → SDK Tools → NDK (Side by side)
 - Verifica la ruta en `local.properties`
 
-**Error: Perl not found (Windows)**
-- Instala Git for Windows: https://git-scm.com/download/win
-- Asegúrate de que está en PATH
+**Error: Perl not found o módulos faltantes (Windows)**
+- Instala Strawberry Perl: https://strawberryperl.com/
+- El Perl de Git for Windows es incompleto y no sirve para OpenSSL
+- Reinicia PowerShell después de instalar
 
 **Error: Bash not found (Windows)**
 - Instala Git for Windows (incluye bash): https://git-scm.com/download/win

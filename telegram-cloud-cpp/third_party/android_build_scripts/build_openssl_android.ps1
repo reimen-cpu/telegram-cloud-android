@@ -65,10 +65,36 @@ Push-Location $buildDir
 try {
     Write-Host "Configuring OpenSSL for $opensslTarget (API $api)..."
     
-    # Check if perl is available
-    $perlPath = Get-Command perl -ErrorAction SilentlyContinue
+    # Check if perl is available - prioritize Strawberry Perl over Git Perl
+    # Git Perl is minimal and lacks modules needed by OpenSSL (Locale::Maketext::Simple)
+    $perlPath = $null
+    
+    # First try: Strawberry Perl (complete distribution with all modules)
+    $strawberryPaths = @(
+        "C:\Strawberry\perl\bin",
+        "$env:SystemDrive\Strawberry\perl\bin",
+        "$env:ProgramFiles\Strawberry\perl\bin"
+    )
+    
+    foreach ($sbPath in $strawberryPaths) {
+        if (Test-Path "$sbPath\perl.exe") {
+            Write-Host "✓ Strawberry Perl encontrado: $sbPath"
+            $env:PATH = "$sbPath;$env:PATH"
+            $perlPath = Get-Command perl -ErrorAction SilentlyContinue
+            break
+        }
+    }
+    
+    # Second try: System PATH
     if (-not $perlPath) {
-        # Try to find perl in Git for Windows installation
+        $perlPath = Get-Command perl -ErrorAction SilentlyContinue
+        if ($perlPath) {
+            Write-Host "✓ Perl encontrado en PATH: $($perlPath.Source)"
+        }
+    }
+    
+    # Last resort: Git for Windows (may lack required modules)
+    if (-not $perlPath) {
         $gitPerlPaths = @(
             "C:\Program Files\Git\usr\bin",
             "C:\Program Files (x86)\Git\usr\bin",
@@ -78,7 +104,8 @@ try {
         
         foreach ($gitPath in $gitPerlPaths) {
             if (Test-Path "$gitPath\perl.exe") {
-                Write-Host "✓ Perl encontrado en Git for Windows: $gitPath"
+                Write-Host "⚠ Usando Git Perl (puede faltar módulos). Recomendado: Strawberry Perl"
+                Write-Host "  Descargar: https://strawberryperl.com/"
                 $env:PATH = "$gitPath;$env:PATH"
                 $perlPath = Get-Command perl -ErrorAction SilentlyContinue
                 break
@@ -88,26 +115,37 @@ try {
     
     if (-not $perlPath) {
         throw @"
-Perl no encontrado. OpenSSL requiere Perl para compilar.
+Perl no encontrado. OpenSSL requiere Perl con módulos completos.
 
-Opciones:
-1. Instalar Git for Windows (incluye Perl): https://git-scm.com/download/win
-2. Instalar Strawberry Perl: https://strawberryperl.com/
-3. Usar WSL: wsl --install y compilar desde Linux
+RECOMENDADO - Instalar Strawberry Perl:
+  https://strawberryperl.com/
+  Incluye todos los módulos que OpenSSL necesita.
+
+Alternativas:
+  - Usar WSL: wsl --install y compilar desde Linux
 
 Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
 "@
     }
     
-    Write-Host "✓ Perl encontrado: $($perlPath.Source)"
+    Write-Host "✓ Perl: $($perlPath.Source)"
     
-    # Check if make is available (needed for OpenSSL build)
+    # Check if make is available
     $makePath = Get-Command make -ErrorAction SilentlyContinue
     if (-not $makePath) {
-        # make should be in the same location as perl in Git for Windows
-        Write-Host "✓ Make encontrado en Git for Windows (mismo directorio que Perl)"
+        $gitBinPaths = @(
+            "C:\Program Files\Git\usr\bin",
+            "C:\Program Files (x86)\Git\usr\bin"
+        )
+        foreach ($gitPath in $gitBinPaths) {
+            if (Test-Path "$gitPath\make.exe") {
+                $env:PATH = "$gitPath;$env:PATH"
+                Write-Host "✓ Make encontrado en Git for Windows"
+                break
+            }
+        }
     } else {
-        Write-Host "✓ Make encontrado: $($makePath.Source)"
+        Write-Host "✓ Make: $($makePath.Source)"
     }
     
     # Configure OpenSSL with correct parameters
