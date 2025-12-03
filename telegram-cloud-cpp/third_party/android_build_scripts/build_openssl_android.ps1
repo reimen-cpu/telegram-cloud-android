@@ -348,55 +348,72 @@ Incluye bash que OpenSSL necesita para detectar compiladores correctamente.
         throw "Strawberry Perl no encontrado. Requerido para compilar OpenSSL."
     }
     
+    # Usar rutas completas para evitar que bash use sus propios binarios (/usr/bin/perl)
+    $perlExe = "$strawberryPerlBin/perl.exe" -replace '\\', '/'
+    $makeExe = "$strawberryMakeBin/gmake.exe" -replace '\\', '/'
+    $numCores = [Environment]::ProcessorCount
+    
     # Usar @' '@ para evitar expansión de variables en PowerShell
+    # CRÍTICO: Configure + make + install todo en bash (mismo entorno)
     $configScript = @'
 #!/bin/bash
-# CRITICAL: Put Strawberry Perl FIRST (has all modules OpenSSL needs)
-# Then NDK bin, then rest of PATH
-export PATH="{0}:{1}:{2}:$PATH"
-export ANDROID_NDK_ROOT="{3}"
-export ANDROID_NDK_HOME="{3}"
-cd "{4}"
-echo "Using Perl: $(which perl)"
-echo "Using make: $(which make)"
-perl Configure android-arm64 -D__ANDROID_API__={5} no-shared \
-  --prefix={4}/installed \
-  --openssldir={4}/installed
-'@ -f $strawberryPerlBin, $strawberryMakeBin, $ndkBinPathUnix, $ndkPath, $installPrefix, $api
+set -e  # Exit on error
+
+# CRITICAL: Usar rutas ABSOLUTAS para Strawberry Perl/Make
+# bash tiene su propio /usr/bin/perl que es incompleto
+export PATH="{0}:{1}:$PATH"
+export ANDROID_NDK_ROOT="{2}"
+export ANDROID_NDK_HOME="{2}"
+cd "{3}"
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "OpenSSL Configure + Build (todo desde bash)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Perl: {4}"
+echo "Make: {5}"
+echo "NDK: {2}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+echo ""
+echo "[1/3] Configuring OpenSSL..."
+{4} Configure android-arm64 -D__ANDROID_API__={6} no-shared \
+  --prefix={3}/installed \
+  --openssldir={3}/installed
+
+echo ""
+echo "[2/3] Building OpenSSL (10-15 min)..."
+{5} -j{7}
+
+echo ""
+echo "[3/3] Installing OpenSSL..."
+{5} install_sw
+
+echo ""
+echo "✓ OpenSSL compiled successfully from bash"
+'@ -f $strawberryPerlBin, $ndkBinPathUnix, $ndkPath, $installPrefix, $perlExe, $makeExe, $api, $numCores
     
     $configScriptPath = Join-Path $buildDir "configure_openssl.sh"
     $configScript | Out-File -FilePath $configScriptPath -Encoding ASCII -Force
     
-    Write-Host "✓ PATH configurado para bash:"
-    Write-Host "  1. Strawberry Perl: $strawberryPerlBin"
-    Write-Host "  2. Strawberry Make: $strawberryMakeBin"
-    Write-Host "  3. NDK toolchain: $ndkBinPathUnix"
+    Write-Host "✓ Configuración para bash:"
+    Write-Host "  Perl: $perlExe"
+    Write-Host "  Make: $makeExe"
+    Write-Host "  NDK: $ndkPath"
     
-    Write-Host "`nEjecutando OpenSSL Configure desde bash..."
+    Write-Host "`nEjecutando OpenSSL (Configure + Build + Install) desde bash..."
     Write-Host "Script: $configScriptPath"
-    Write-Host "`nEsto puede tardar 1-2 minutos...`n"
+    Write-Host ""
     
     & $bashPath $configScriptPath
     
     if ($LASTEXITCODE -ne 0) {
-        throw "Configure failed with exit code: $LASTEXITCODE"
+        throw "OpenSSL build failed with exit code: $LASTEXITCODE"
     }
     
-    Write-Host "Building OpenSSL (this may take 10-15 minutes)..."
-    & make -j$([Environment]::ProcessorCount)
-    
-    if ($LASTEXITCODE -ne 0) {
-        throw "Make failed with exit code: $LASTEXITCODE"
-    }
-    
-    Write-Host "Installing OpenSSL..."
-    & make install_sw
-    
-    if ($LASTEXITCODE -ne 0) {
-        throw "Install failed with exit code: $LASTEXITCODE"
-    }
-    
-    Write-Host "`n✓ OpenSSL built successfully"
+    Write-Host ""
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    Write-Host "✓ OpenSSL compilado exitosamente"
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     Write-Host "Location: $buildDir/installed"
     Write-Host "Include: $buildDir/installed/include"
     Write-Host "Libs: $buildDir/installed/lib"
