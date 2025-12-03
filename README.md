@@ -1,6 +1,59 @@
 # Telegram Cloud Android
 
-Aplicación Android para gestionar archivos en la nube usando Telegram como backend. Tu nube, tus reglas.
+Aplicación Android para gestionar archivos en la nube usando Telegram como backend, no hay limites de tamaño por archivo, no hay limites de almacenamiento total. Tu nube, tus reglas.
+
+Para descargar la apk directamente: https://github.com/reimen-cpu/telegram-cloud-android/releases/tag/v1.0.0
+
+## 🚀 Inicio Rápido
+
+### Opción A: Build Automático (Todo en uno)
+
+```bash
+# Linux/macOS
+git clone https://github.com/reimen-cpu/telegram-cloud-android
+cd telegram-cloud-android
+chmod +x *.sh                    # Dar permisos de ejecución
+./build-complete.sh              # Descarga + compila + genera APK
+```
+
+```powershell
+# Windows (PowerShell como Administrador)
+git clone https://github.com/reimen-cpu/telegram-cloud-android
+cd telegram-cloud-android
+.\build-complete.ps1             # Descarga + compila + genera APK
+```
+
+El script automático:
+1. ✓ Descarga OpenSSL, libcurl y SQLCipher
+2. ✓ Compila las tres librerías para Android
+3. ✓ Configura `local.properties` automáticamente
+4. ✓ Genera la APK release
+
+**Tiempo estimado:** 15-30 minutos (dependiendo de tu hardware).
+
+### Opción B: Paso a Paso Manual
+
+Si prefieres control manual del proceso:
+
+```bash
+# 1. Clonar repositorio
+git clone https://github.com/reimen-cpu/telegram-cloud-android
+cd telegram-cloud-android
+
+# 2. Descargar dependencias
+chmod +x setup-dependencies.sh   # Linux/macOS
+./setup-dependencies.sh
+
+# 3. Compilar dependencias nativas (ver guía completa abajo)
+
+# 4. Configurar local.properties con las rutas
+
+# 5. Compilar APK
+cd android
+./gradlew assembleRelease
+```
+
+**¿Primera vez?** Ver la guía completa en [Compilación desde Código Fuente](#compilación-desde-código-fuente).
 
 ## Características
 
@@ -19,70 +72,196 @@ Aplicación Android para gestionar archivos en la nube usando Telegram como back
 - Bot de Telegram configurado con permisos apropiados
 - Canal de Telegram (opcional, para almacenamiento)
 
-## Compilación
+## Compilación desde Código Fuente
 
 ### Prerrequisitos
 
 1. **Android Studio Hedgehog o superior**
-2. **Android SDK y NDK r25c o superior**
-3. **Librerías nativas compiladas**:
-   - OpenSSL 3.x
-   - libcurl 8.x
-   - SQLCipher
+2. **Android SDK** con API 28 o superior
+3. **Android NDK r25c** (específicamente: 25.2.9519653)
+4. **CMake 3.22** o superior (incluido con Android SDK)
+5. **Git** para clonar el repositorio
 
-### Configuración del entorno
+### Paso 1: Clonar el Repositorio
 
-1. Clona el repositorio:
 ```bash
-git clone <repository-url>
-cd android
+git clone https://github.com/reimen-cpu/telegram-cloud-android
+cd telegram-cloud-android
 ```
 
-2. **Compilar dependencias nativas** (ver sección abajo)
+### Paso 2: Descargar Dependencias Nativas
 
-3. Configura las rutas de las librerías nativas. Puedes hacerlo de dos formas:
+El proyecto requiere tres librerías nativas: **OpenSSL, libcurl y SQLCipher**. 
 
-   **Opción A: Variables de entorno (recomendado para CI/F-Droid)**
-   ```bash
-   export VCPKG_ROOT=/ruta/a/vcpkg/installed/arm64-android
-   ```
+#### 2.1 Opción A: Script Automático (Recomendado)
 
-   **Opción B: Archivo local.properties** (solo para desarrollo local, no se sube al repo)
-   ```properties
-   sdk.dir=/ruta/a/android/sdk
-   ndk.dir=/ruta/a/android/ndk/25.2.9519653
-   native.openssl.arm64-v8a=/ruta/a/openssl/installed/arm64-android
-   native.curl.arm64-v8a=/ruta/a/curl/installed/arm64-android
-   native.sqlcipher.arm64-v8a=/ruta/a/sqlcipher/installed/arm64-android
-   ```
+Usa el script incluido que descarga todo automáticamente:
 
-4. Abre el proyecto en Android Studio y sincroniza Gradle
-
-5. Compila la aplicación:
 ```bash
+# Linux/macOS
+./setup-dependencies.sh
+```
+
+```powershell
+# Windows (PowerShell)
+.\setup-dependencies.ps1
+```
+
+Esto descargará las fuentes en `~/android-native-sources` (Linux/macOS) o `%USERPROFILE%\android-native-sources` (Windows).
+
+#### 2.2 Opción B: Descarga Manual
+
+Si prefieres descargar manualmente:
+
+```bash
+# Linux/macOS
+mkdir -p ~/android-native-sources
+cd ~/android-native-sources
+
+# Descargar OpenSSL 3.2.0
+wget https://www.openssl.org/source/openssl-3.2.0.tar.gz
+tar -xzf openssl-3.2.0.tar.gz
+
+# Descargar libcurl 8.7.1
+wget https://curl.se/download/curl-8.7.1.tar.gz
+tar -xzf curl-8.7.1.tar.gz
+
+# Clonar SQLCipher
+git clone https://github.com/sqlcipher/sqlcipher.git
+```
+
+```powershell
+# Windows (PowerShell) - Descargar y extraer manualmente:
+# 1. OpenSSL: https://www.openssl.org/source/openssl-3.2.0.tar.gz
+# 2. libcurl: https://curl.se/download/curl-8.7.1.tar.gz
+# 3. SQLCipher: git clone https://github.com/sqlcipher/sqlcipher.git
+# Extraer todo en: C:\android-native-sources\
+```
+
+### Paso 3: Compilar las Dependencias Nativas
+
+**Variables de entorno comunes:**
+
+```bash
+# Linux/macOS
+export NDK="$HOME/Android/Sdk/ndk/25.2.9519653"
+export API=28
+export ABI="arm64-v8a"
+export OUT_DIR="$HOME/android-native-builds"
+export SRC_DIR="$HOME/android-native-sources"
+```
+
+```powershell
+# Windows (PowerShell)
+$env:NDK = "C:\Android\Sdk\ndk\25.2.9519653"  # Ajustar según tu instalación
+$API = 28
+$ABI = "arm64-v8a"
+$OUT_DIR = "C:\android-native-builds"
+$SRC_DIR = "C:\android-native-sources"
+```
+
+**Compilar en orden (cada librería depende de la anterior):**
+
+```bash
+# Linux/macOS
+cd telegram-cloud-android
+
+# 1. OpenSSL
+./telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh \
+  -ndk "$NDK" -abi "$ABI" -api $API \
+  -srcPath "$SRC_DIR/openssl-3.2.0" \
+  -outDir "$OUT_DIR/openssl"
+
+# 2. libcurl (necesita OpenSSL)
+./telegram-cloud-cpp/third_party/android_build_scripts/build_libcurl_android.sh \
+  -ndk "$NDK" -abi "$ABI" -api $API \
+  -opensslDir "$OUT_DIR/openssl/build_arm64" \
+  -srcPath "$SRC_DIR/curl-8.7.1" \
+  -outDir "$OUT_DIR/libcurl"
+
+# 3. SQLCipher (necesita OpenSSL)
+./telegram-cloud-cpp/third_party/android_build_scripts/build_sqlcipher_android.sh \
+  -ndk "$NDK" -abi "$ABI" -api $API \
+  -opensslDir "$OUT_DIR/openssl/build_arm64" \
+  -srcPath "$SRC_DIR/sqlcipher" \
+  -outDir "$OUT_DIR/sqlcipher"
+```
+
+```powershell
+# Windows (PowerShell)
+cd telegram-cloud-android
+
+# 1. OpenSSL
+.\telegram-cloud-cpp\third_party\android_build_scripts\build_openssl_android.ps1 `
+  -ndk $env:NDK -abi $ABI -api $API `
+  -srcPath "$SRC_DIR\openssl-3.2.0" `
+  -outDir "$OUT_DIR\openssl"
+
+# 2. libcurl (necesita OpenSSL)
+.\telegram-cloud-cpp\third_party\android_build_scripts\build_libcurl_android.ps1 `
+  -ndk $env:NDK -abi $ABI -api $API `
+  -opensslDir "$OUT_DIR\openssl\build_arm64" `
+  -srcPath "$SRC_DIR\curl-8.7.1" `
+  -outDir "$OUT_DIR\libcurl"
+
+# 3. SQLCipher (necesita OpenSSL)
+.\telegram-cloud-cpp\third_party\android_build_scripts\build_sqlcipher_android.ps1 `
+  -ndk $env:NDK -abi $ABI -api $API `
+  -opensslDir "$OUT_DIR\openssl\build_arm64" `
+  -srcPath "$SRC_DIR\sqlcipher" `
+  -outDir "$OUT_DIR\sqlcipher"
+```
+
+**Para compilar múltiples arquitecturas**, repite el proceso con `ABI="armeabi-v7a"` (cambia `build_arm64` por `build_armv7` en los paths).
+
+> **Nota:** La compilación puede tardar 10-20 minutos por arquitectura dependiendo de tu hardware.
+
+### Paso 4: Configurar Rutas de Librerías
+
+Crea el archivo `android/local.properties` con las rutas a tus compilaciones:
+
+```properties
+sdk.dir=/ruta/a/Android/Sdk
+ndk.dir=/ruta/a/Android/Sdk/ndk/25.2.9519653
+
+# Rutas a las librerías compiladas (ajustar según tu sistema)
+native.openssl.arm64-v8a=/ruta/a/android-native-builds/openssl/build_arm64
+native.curl.arm64-v8a=/ruta/a/android-native-builds/libcurl/build_arm64
+native.sqlcipher.arm64-v8a=/ruta/a/android-native-builds/sqlcipher/build_arm64
+
+# Si compilaste para armeabi-v7a también:
+native.openssl.armeabi-v7a=/ruta/a/android-native-builds/openssl/build_armv7
+native.curl.armeabi-v7a=/ruta/a/android-native-builds/libcurl/build_armv7
+native.sqlcipher.armeabi-v7a=/ruta/a/android-native-builds/sqlcipher/build_armv7
+```
+
+### Paso 5: Compilar la APK
+
+```bash
+cd android
 ./gradlew assembleRelease
 ```
 
-## Compilación de dependencias nativas
-
-El proyecto requiere librerías nativas compiladas para Android. Consulta [telegram-cloud-cpp/README-android.md](telegram-cloud-cpp/README-android.md) para instrucciones detalladas.
-
-### Resumen rápido:
-
-1. Descarga los fuentes de OpenSSL, libcurl y SQLCipher
-2. Usa los scripts en `telegram-cloud-cpp/third_party/android_build_scripts/`:
-   ```powershell
-   # Ejemplo para Windows (PowerShell)
-   .\telegram-cloud-cpp\third_party\android_build_scripts\build_openssl_android.ps1 -ndk $NDK -abi arm64-v8a -api 24 -srcPath $OPENSSL_SRC -outDir $OUTPUT
-   ```
-3. Configura las rutas en `local.properties` o variables de entorno
+La APK se generará en: `android/app/build/outputs/apk/release/app-release.apk`
 
 ### Para F-Droid
 
-F-Droid compilará las dependencias desde fuente. Asegúrate de que:
-- Los scripts de compilación estén incluidos en el repositorio
-- Las instrucciones estén documentadas en el README
-- No haya dependencias de binarios precompilados
+F-Droid compilará automáticamente todas las dependencias desde fuente. Ver [FDROID_COMPLIANCE.md](FDROID_COMPLIANCE.md) y [BUILD_NATIVE_DEPENDENCIES.md](BUILD_NATIVE_DEPENDENCIES.md) para más detalles.
+
+### Solución de Problemas
+
+**Error: `sqlite3.h` o `openssl/evp.h` not found**
+- Las dependencias nativas no están compiladas o las rutas en `local.properties` son incorrectas
+- Verifica que existen los archivos `.a` en las carpetas de salida
+- Asegúrate de que las rutas en `local.properties` son absolutas y correctas
+
+**Error: NDK not found**
+- Instala NDK r25c desde Android Studio: Tools → SDK Manager → SDK Tools → NDK (Side by side)
+- Verifica la ruta en `local.properties`
+
+**Error en scripts de compilación**
+- Verifica que los scripts tienen permisos de ejecución (Linux/macOS): `chmod +x *.sh`
+- En Windows, ejecuta PowerShell como Administrador si hay problemas de permisos
 
 ## Estructura del proyecto
 
@@ -197,8 +376,16 @@ Para reportar bugs o solicitar features, por favor abre un issue en GitHub.
 - Requiere conexión a internet para funcionar
 - La sincronización funciona mejor con conexión estable
 
+## Documentación Adicional
+
+- [BUILD_NATIVE_DEPENDENCIES.md](BUILD_NATIVE_DEPENDENCIES.md) - Guía detallada de compilación de dependencias nativas
+- [FDROID_COMPLIANCE.md](FDROID_COMPLIANCE.md) - Verificación de cumplimiento con políticas de F-Droid
+- [telegram-cloud-cpp/README-android.md](telegram-cloud-cpp/README-android.md) - Detalles técnicos de integración JNI
+
 ## Enlaces relacionados
 
-- [telegram-cloud-cpp](telegram-cloud-cpp/) - Core nativo compartido
-- [Documentación de compilación para Android](telegram-cloud-cpp/README-android.md)
+- [telegram-cloud-cpp](telegram-cloud-cpp/) - Core nativo compartido (C++)
+- [SQLCipher](https://github.com/sqlcipher/sqlcipher) - Base de datos cifrada
+- [OpenSSL](https://www.openssl.org/) - Librería criptográfica
+- [libcurl](https://curl.se/) - Cliente HTTP/HTTPS
 

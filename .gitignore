@@ -102,3 +102,12 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
+# External dependencies (should be downloaded separately)
+# Users should run setup-dependencies.sh to download these
+sqlcipher/
+sqlcipher-android/
+openssl-*/
+curl-*/
+android-native-sources/
+android-native-builds/
+

@@ -14,10 +14,6 @@ IssueTracker: <https://github.com/reimen-cpu/telegram-cloud-android/issues>
 
 Translation: <https://github.com/reimen-cpu/telegram-cloud-android>
 
-AntiFeatures:
-  - NoSourceSince
-  - NonFreeDep
-
 Summary: Gestiona tus archivos en la nube usando Telegram como backend. Tu nube, tus reglas.
 
 Description: |
@@ -54,7 +50,11 @@ Binaries: https://github.com/reimen-cpu/telegram-cloud-android/releases
 Builds:
   - versionName: 1.0.0
     versionCode: 1
-    commit: <tag-o-commit-inicial>
+    commit: v1.0.0
+    subdir: android
+    sudo:
+      - apt-get update
+      - apt-get install -y wget tar build-essential perl
     gradle:
       - yes
     scandelete:
@@ -64,26 +64,29 @@ Builds:
       - local.properties
       - keystore
       - '*.iml'
-    subdir: android
-    buildjni:
-      - telegram-cloud-cpp
-    submodules: false
-    init:
+    prebuild:
       - >-
-        cd telegram-cloud-cpp && git submodule update --init --recursive
-    build:
-      - >-
-        ./gradlew assembleRelease
-    output: android/app/build/outputs/apk/release/app-release-unsigned.apk
-    srclibs:
-      - >-
-        telegram-cloud-cpp@<commit-hash>
-        |Android.mk
-        |LOCAL_PATH := $(call my-dir)
-        |include $(CLEAR_VARS)
-        |LOCAL_MODULE := telegramcloud_core
-        |LOCAL_SRC_FILES := $(LOCAL_PATH)/../libs/$(TARGET_ARCH_ABI)/libtelegramcloud_core.so
-        |include $(PREBUILT_SHARED_LIBRARY)
+        export DEPS_DIR=$$SDK$$/deps-src &&
+        export BUILD_DIR=$$SDK$$/deps-build &&
+        mkdir -p $DEPS_DIR $BUILD_DIR &&
+        cd $DEPS_DIR &&
+        wget -nc https://www.openssl.org/source/openssl-3.2.0.tar.gz &&
+        tar -xzf openssl-3.2.0.tar.gz &&
+        wget -nc https://curl.se/download/curl-8.7.1.tar.gz &&
+        tar -xzf curl-8.7.1.tar.gz &&
+        git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git || true &&
+        cd $$OLDPWD$$ &&
+        export NDK=$$NDK$$ &&
+        export API=28 &&
+        export ABI=arm64-v8a &&
+        chmod +x ../telegram-cloud-cpp/third_party/android_build_scripts/*.sh &&
+        ../telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh -ndk $NDK -abi $ABI -api $API -srcPath $DEPS_DIR/openssl-3.2.0 -outDir $BUILD_DIR/openssl &&
+        ../telegram-cloud-cpp/third_party/android_build_scripts/build_libcurl_android.sh -ndk $NDK -abi $ABI -api $API -opensslDir $BUILD_DIR/openssl/build_arm64_v8a -srcPath $DEPS_DIR/curl-8.7.1 -outDir $BUILD_DIR/libcurl &&
+        ../telegram-cloud-cpp/third_party/android_build_scripts/build_sqlcipher_android.sh -ndk $NDK -abi $ABI -api $API -opensslDir $BUILD_DIR/openssl/build_arm64_v8a -srcPath $DEPS_DIR/sqlcipher -outDir $BUILD_DIR/sqlcipher &&
+        echo "native.openssl.arm64-v8a=$BUILD_DIR/openssl/build_arm64_v8a" >> local.properties &&
+        echo "native.curl.arm64-v8a=$BUILD_DIR/libcurl/build_arm64_v8a" >> local.properties &&
+        echo "native.sqlcipher.arm64-v8a=$BUILD_DIR/sqlcipher/build_arm64_v8a" >> local.properties
+    ndk: 25.2.9519653
 
 AutoUpdateMode: None
 
