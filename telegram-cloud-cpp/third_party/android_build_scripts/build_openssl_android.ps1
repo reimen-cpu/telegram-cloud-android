@@ -56,9 +56,22 @@ Copy-Item -Recurse -Force "$srcPath/*" $buildDir
 
 # Configure environment for NDK
 $ndkToolchain = Join-Path $ndk "toolchains/llvm/prebuilt/windows-x86_64"
+if (-not (Test-Path $ndkToolchain)) {
+    Write-Error "NDK toolchain not found: $ndkToolchain"
+    exit 1
+}
+
 $PATH_BACKUP = $env:PATH
-$env:PATH = "$ndkToolchain/bin;$env:PATH"
 $env:ANDROID_NDK_ROOT = $ndk
+$env:ANDROID_NDK_HOME = $ndk
+
+# CRITICAL: Add NDK to PATH first (use proper Windows path separators)
+$ndkBinPath = Join-Path $ndkToolchain "bin"
+$env:PATH = "$ndkBinPath;$env:PATH"
+Write-Host "✓ NDK toolchain agregado al PATH: $ndkBinPath"
+
+# Debug: Show NDK environment
+Write-Host "  ANDROID_NDK_ROOT: $env:ANDROID_NDK_ROOT"
 
 Push-Location $buildDir
 
@@ -79,6 +92,7 @@ try {
     foreach ($sbPath in $strawberryPaths) {
         if (Test-Path "$sbPath\perl.exe") {
             Write-Host "✓ Strawberry Perl encontrado: $sbPath"
+            # PREPEND to PATH to keep NDK at front
             $env:PATH = "$sbPath;$env:PATH"
             $perlPath = Get-Command perl -ErrorAction SilentlyContinue
             break
@@ -152,6 +166,7 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
         foreach ($makeBin in $strawberryMakePaths) {
             if (Test-Path $makeBin) {
                 $strawberryBinDir = Split-Path -Parent $makeBin
+                # PREPEND to keep NDK/Perl at front
                 $env:PATH = "$strawberryBinDir;$env:PATH"
                 $makeCmd = Split-Path -Leaf $makeBin
                 $makeCmd = $makeCmd -replace '\.exe$', ''
@@ -172,6 +187,7 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
         )
         foreach ($gitPath in $gitBinPaths) {
             if (Test-Path "$gitPath\make.exe") {
+                # PREPEND to keep NDK/Perl at front
                 $env:PATH = "$gitPath;$env:PATH"
                 Write-Host "✓ Make encontrado en Git for Windows"
                 $makePath = Get-Command make -ErrorAction SilentlyContinue
@@ -195,13 +211,25 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
 "@
     }
     
+    # Verify NDK compiler is accessible
+    $ndkCompiler = Join-Path $ndkToolchain "bin\aarch64-linux-android$api-clang.cmd"
+    if ($abi -eq "armeabi-v7a") {
+        $ndkCompiler = Join-Path $ndkToolchain "bin\armv7a-linux-androideabi$api-clang.cmd"
+    }
+    if (-not (Test-Path $ndkCompiler)) {
+        throw "NDK compiler not found: $ndkCompiler`nVerify NDK installation and PATH configuration."
+    }
+    Write-Host "✓ NDK compiler: $(Split-Path -Leaf $ndkCompiler)"
+    
     # Configure OpenSSL with correct parameters
+    # Use forward slashes for Unix-style paths (OpenSSL expects this)
+    $installPrefix = $buildDir -replace '\\', '/'
     $configArgs = @(
         $opensslTarget,
         "-D__ANDROID_API__=$api",
         "no-shared",
-        "--prefix=$buildDir/installed",
-        "--openssldir=$buildDir/installed"
+        "--prefix=$installPrefix/installed",
+        "--openssldir=$installPrefix/installed"
     )
     
     Write-Host "Running: perl Configure $($configArgs -join ' ')"
