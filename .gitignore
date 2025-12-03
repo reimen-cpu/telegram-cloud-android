@@ -1,0 +1,119 @@
+# Android build artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+*/build/
+.gradle/
+local.properties
+*.iml
+.idea/
+*.hprof
+
+# Keystore files - NEVER COMMIT THESE
+keystore/
+*.jks
+*.keystore
+*.key
+
+# Android Studio / IntelliJ IDEA
+*.iml
+.idea/
+*.swp
+*.swo
+*~
+.navigation/
+captures/
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+*.cmake
+!CMakeLists.txt
+
+# Native build artifacts
+*.o
+*.so
+*.a
+*.lib
+*.dll
+*.dylib
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Environment files
+.env
+config.ini
+!env_template.txt
+!env_example.txt
+
+# Database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Backup files
+*.backup
+*.backup.*
+
+# VSCode
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Node (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# External dependencies (should be downloaded separately)
+# Users should run scripts/shell/setup-dependencies.sh to download these
+sqlcipher/
+sqlcipher-android/
+openssl-*/
+curl-*/
+android-native-sources/
+android-native-builds/
+
+# Keep organized folders
+!docs/
+!scripts/
+!scripts/powershell/
+!scripts/shell/
+
