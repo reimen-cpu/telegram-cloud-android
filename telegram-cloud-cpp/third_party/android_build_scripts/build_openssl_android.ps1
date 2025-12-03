@@ -239,11 +239,31 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     $wrapperContent = "@echo off`r`n`"$compilerReal`" %*"
     $wrapperPlusContent = "@echo off`r`n`"$compilerPlusReal`" %*"
     
-    # Crear múltiples variantes del nombre para máxima compatibilidad
+    # CRÍTICO: OpenSSL busca "clang" genérico PRIMERO (sin prefijo target)
+    # Si no lo encuentra, busca "$triarch-gcc" que falla en NDK r25c
+    @(
+        "clang.bat",
+        "clang.cmd",
+        "clang.exe"  # .exe para que which() lo encuentre
+    ) | ForEach-Object {
+        $wrapperPath = Join-Path $wrapperDir $_
+        $wrapperContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
+    }
+    
+    @(
+        "clang++.bat",
+        "clang++.cmd",
+        "clang++.exe"
+    ) | ForEach-Object {
+        $wrapperPath = Join-Path $wrapperDir $_
+        $wrapperPlusContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
+    }
+    
+    # También crear variantes con prefijo target (por si acaso)
     @(
         "$target-clang.bat",
         "$target-clang.cmd", 
-        "$target-clang"
+        "$target-clang.exe"
     ) | ForEach-Object {
         $wrapperPath = Join-Path $wrapperDir $_
         $wrapperContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
@@ -252,7 +272,7 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     @(
         "$target-clang++.bat",
         "$target-clang++.cmd",
-        "$target-clang++"
+        "$target-clang++.exe"
     ) | ForEach-Object {
         $wrapperPath = Join-Path $wrapperDir $_
         $wrapperPlusContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
@@ -268,9 +288,10 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     $env:PATH = "$wrapperDir;$env:PATH"
     
     Write-Host "✓ NDK compiler wrappers creados (múltiples variantes)"
-    Write-Host "  $target-clang (.bat, .cmd, sin ext) → $target$api-clang.cmd"
+    Write-Host "  clang → $target$api-clang.cmd (genérico, para OpenSSL which())"
+    Write-Host "  $target-clang → $target$api-clang.cmd (con target)"
     Write-Host "  ar.exe, ranlib.exe copiados"
-    Write-Host "  Wrapper dir: $wrapperDir"
+    Write-Host "  Wrapper dir en PATH: $wrapperDir"
     
     # Configure OpenSSL with correct parameters
     $installPrefix = $buildDir -replace '\\', '/'
