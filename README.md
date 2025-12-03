@@ -34,10 +34,11 @@ cd telegram-cloud-android
 
 El script automático:
 1. ✓ Verifica bash y herramientas necesarias
-2. ✓ Descarga OpenSSL, libcurl y SQLCipher
-3. ✓ Compila las tres librerías para Android
-4. ✓ Configura `local.properties` automáticamente
-5. ✓ Genera la APK release
+2. ✓ Inicializa submódulos de Git automáticamente
+3. ✓ Descarga OpenSSL, libcurl y SQLCipher
+4. ✓ Compila las tres librerías para Android
+5. ✓ Configura `local.properties` automáticamente
+6. ✓ Genera la APK release
 
 **Tiempo estimado:** 15-25 minutos (dependiendo de tu hardware).
 
