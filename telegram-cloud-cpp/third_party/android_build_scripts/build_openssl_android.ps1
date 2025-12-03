@@ -353,14 +353,21 @@ Incluye bash que OpenSSL necesita para detectar compiladores correctamente.
     $makeExe = "$strawberryMakeBin/gmake.exe" -replace '\\', '/'
     $numCores = [Environment]::ProcessorCount
     
+    # Configurar compiladores para OpenSSL (rutas absolutas)
+    $ccPath = (Join-Path $ndkBinPath "$target$api-clang.cmd") -replace '\\', '/'
+    $arPath = (Join-Path $ndkBinPath "llvm-ar.exe") -replace '\\', '/'
+    $ranlibPath = (Join-Path $ndkBinPath "llvm-ranlib.exe") -replace '\\', '/'
+    
     # Usar @' '@ para evitar expansión de variables en PowerShell
     # CRÍTICO: Configure + make + install todo en bash (mismo entorno)
     $configScript = @'
 #!/bin/bash
 set -e  # Exit on error
 
-# CRITICAL: Usar rutas ABSOLUTAS para Strawberry Perl/Make
-# bash tiene su propio /usr/bin/perl que es incompleto
+# CRITICAL: Configurar compiladores ANTES de Configure
+export CC="{7}"
+export AR="{8}"
+export RANLIB="{9}"
 export PATH="{0}:{1}:$PATH"
 export ANDROID_NDK_ROOT="{2}"
 export ANDROID_NDK_HOME="{2}"
@@ -371,6 +378,8 @@ echo "OpenSSL Configure + Build (todo desde bash)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Perl: {4}"
 echo "Make: {5}"
+echo "CC: {7}"
+echo "AR: {8}"
 echo "NDK: {2}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -382,7 +391,7 @@ echo "[1/3] Configuring OpenSSL..."
 
 echo ""
 echo "[2/3] Building OpenSSL (10-15 min)..."
-{5} -j{7}
+{5} -j{10}
 
 echo ""
 echo "[3/3] Installing OpenSSL..."
@@ -390,7 +399,7 @@ echo "[3/3] Installing OpenSSL..."
 
 echo ""
 echo "✓ OpenSSL compiled successfully from bash"
-'@ -f $strawberryPerlBin, $ndkBinPathUnix, $ndkPath, $installPrefix, $perlExe, $makeExe, $api, $numCores
+'@ -f $strawberryPerlBin, $ndkBinPathUnix, $ndkPath, $installPrefix, $perlExe, $makeExe, $api, $ccPath, $arPath, $ranlibPath, $numCores
     
     $configScriptPath = Join-Path $buildDir "configure_openssl.sh"
     $configScript | Out-File -FilePath $configScriptPath -Encoding ASCII -Force
@@ -398,6 +407,8 @@ echo "✓ OpenSSL compiled successfully from bash"
     Write-Host "✓ Configuración para bash:"
     Write-Host "  Perl: $perlExe"
     Write-Host "  Make: $makeExe"
+    Write-Host "  CC: $ccPath"
+    Write-Host "  AR: $arPath"
     Write-Host "  NDK: $ndkPath"
     
     Write-Host "`nEjecutando OpenSSL (Configure + Build + Install) desde bash..."
