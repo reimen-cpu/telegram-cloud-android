@@ -42,9 +42,21 @@ if [ -z "$ANDROID_NDK_HOME" ] && [ -z "$NDK_HOME" ]; then
     fi
 fi
 
+# Intentar detectar desde ANDROID_HOME/ANDROID_SDK_ROOT
+if [ -z "$ANDROID_NDK_HOME" ]; then
+    SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+    if [ -n "$SDK_ROOT" ] && [ -d "$SDK_ROOT/ndk/25.2.9519653" ]; then
+        export ANDROID_NDK_HOME="$SDK_ROOT/ndk/25.2.9519653"
+        echo -e "${GREEN}✓ NDK detectado automáticamente desde ANDROID_HOME${NC}"
+    fi
+fi
+
 if [ -z "$ANDROID_NDK_HOME" ]; then
     echo -e "${RED}Error: Android NDK no encontrado${NC}"
-    echo -e "${YELLOW}Configura la variable ANDROID_NDK_HOME o ndk.dir en android/local.properties${NC}"
+    echo -e "${YELLOW}Opciones:${NC}"
+    echo "  1. Configurar variable de entorno: export ANDROID_NDK_HOME=/ruta/a/ndk/25.2.9519653"
+    echo "  2. Crear android/local.properties con: ndk.dir=/ruta/a/ndk/25.2.9519653"
+    echo "  3. Asegurar que ANDROID_HOME esté configurado correctamente"
     exit 1
 fi
 

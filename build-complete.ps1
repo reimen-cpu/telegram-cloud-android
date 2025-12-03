@@ -39,9 +39,24 @@ if (-not $NDK -and (Test-Path "android\local.properties")) {
     }
 }
 
+# Intentar detectar desde ANDROID_HOME/ANDROID_SDK_ROOT
+if (-not $NDK) {
+    $SDK_ROOT = $env:ANDROID_HOME
+    if (-not $SDK_ROOT) {
+        $SDK_ROOT = $env:ANDROID_SDK_ROOT
+    }
+    if ($SDK_ROOT -and (Test-Path "$SDK_ROOT\ndk\25.2.9519653")) {
+        $NDK = "$SDK_ROOT\ndk\25.2.9519653"
+        Write-ColorOutput Green "✓ NDK detectado automáticamente desde ANDROID_HOME"
+    }
+}
+
 if (-not $NDK -or -not (Test-Path $NDK)) {
     Write-ColorOutput Red "Error: Android NDK no encontrado"
-    Write-ColorOutput Yellow "Configura la variable ANDROID_NDK_HOME o ndk.dir en android\local.properties"
+    Write-ColorOutput Yellow "Opciones:"
+    Write-Host "  1. Configurar variable de entorno: `$env:ANDROID_NDK_HOME = 'C:\Android\ndk\25.2.9519653'"
+    Write-Host "  2. Crear android\local.properties con: ndk.dir=C:/Android/ndk/25.2.9519653"
+    Write-Host "  3. Asegurar que ANDROID_HOME esté configurado correctamente"
     exit 1
 }
 
