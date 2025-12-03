@@ -36,7 +36,7 @@ Para descargar la apk directamente: https://github.com/reimen-cpu/telegram-cloud
 
 1. Clona el repositorio:
 ```bash
-git clone <repository-url>
+git clone https://github.com/reimen-cpu/telegram-cloud-android
 cd android
 ```
 
