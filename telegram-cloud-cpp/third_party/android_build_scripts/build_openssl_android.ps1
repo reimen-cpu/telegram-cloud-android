@@ -293,32 +293,60 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     Write-Host "  ar.exe, ranlib.exe copiados"
     Write-Host "  Wrapper dir en PATH: $wrapperDir"
     
-    # Configurar variables de entorno que OpenSSL Configure lee
-    # OpenSSL respeta estas variables en lugar de buscar compiladores
-    $env:CC = $compilerReal
-    $env:CXX = $compilerPlusReal  
-    $env:AR = $arReal
-    $env:RANLIB = $ranlibReal
-    $env:CROSS_COMPILE = ""  # Vacío para evitar que busque gcc
+    # SOLUCIÓN: Ejecutar Configure desde bash (Git bash) donde OpenSSL funciona mejor
+    # En Windows, OpenSSL tiene problemas detectando compiladores, bash funciona mejor
     
-    Write-Host "✓ Variables de entorno del compilador configuradas"
-    Write-Host "  CC=$env:CC"
-    Write-Host "  AR=$env:AR"
-    
-    # Configure OpenSSL with correct parameters
-    $installPrefix = $buildDir -replace '\\', '/'
-    $configArgs = @(
-        $opensslTarget,
-        "-D__ANDROID_API__=$api",
-        "no-shared",
-        "--prefix=$installPrefix/installed",
-        "--openssldir=$installPrefix/installed"
+    # Buscar bash de Git for Windows
+    $bashPath = $null
+    $gitBashPaths = @(
+        "C:\Program Files\Git\bin\bash.exe",
+        "C:\Program Files (x86)\Git\bin\bash.exe",
+        "$env:ProgramFiles\Git\bin\bash.exe",
+        "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
     )
     
-    Write-Host "`nEjecutando OpenSSL Configure..."
-    Write-Host "perl Configure $($configArgs -join ' ')"
+    foreach ($gitPath in $gitBashPaths) {
+        if (Test-Path $gitPath) {
+            $bashPath = $gitPath
+            break
+        }
+    }
+    
+    if (-not $bashPath) {
+        throw @"
+Bash no encontrado. Necesario para ejecutar OpenSSL Configure en Windows.
+
+Instalar Git for Windows: https://git-scm.com/download/win
+Incluye bash que OpenSSL necesita para detectar compiladores correctamente.
+"@
+    }
+    
+    Write-Host "✓ Bash encontrado: $bashPath"
+    
+    # Preparar script de configuración para bash
+    $installPrefix = $buildDir -replace '\\', '/'
+    $ndkPath = $ndk -replace '\\', '/'
+    $ndkBinPath = $ndkBinPath -replace '\\', '/'
+    
+    $configScript = @"
+#!/bin/bash
+export PATH="$ndkBinPath:`$PATH"
+export ANDROID_NDK_ROOT="$ndkPath"
+export ANDROID_NDK_HOME="$ndkPath"
+cd "$installPrefix"
+perl Configure android-arm64 -D__ANDROID_API__=$api no-shared \
+  --prefix=$installPrefix/installed \
+  --openssldir=$installPrefix/installed
+"@
+    
+    $configScriptPath = Join-Path $buildDir "configure_openssl.sh"
+    $configScript | Out-File -FilePath $configScriptPath -Encoding ASCII -Force
+    
+    Write-Host "`nEjecutando OpenSSL Configure desde bash..."
+    Write-Host "Script: $configScriptPath"
     Write-Host "`nEsto puede tardar 1-2 minutos...`n"
-    & perl Configure @configArgs
+    
+    & $bashPath $configScriptPath
     
     if ($LASTEXITCODE -ne 0) {
         throw "Configure failed with exit code: $LASTEXITCODE"
