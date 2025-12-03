@@ -4,6 +4,10 @@
 
 set -e  # Exit on error
 
+# Obtener la ruta del proyecto (dos niveles arriba del script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Colores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -33,8 +37,8 @@ echo -e "${GREEN}✓ Todas las herramientas están instaladas${NC}"
 # Verificar NDK
 echo -e "\n${BLUE}[2/5] Verificando Android NDK...${NC}"
 if [ -z "$ANDROID_NDK_HOME" ] && [ -z "$NDK_HOME" ]; then
-    if [ -f "android/local.properties" ]; then
-        NDK_DIR=$(grep "ndk.dir" android/local.properties | cut -d'=' -f2 | tr -d ' ')
+    if [ -f "$PROJECT_ROOT/android/local.properties" ]; then
+        NDK_DIR=$(grep "ndk.dir" "$PROJECT_ROOT/android/local.properties" | cut -d'=' -f2 | tr -d ' ')
         if [ -n "$NDK_DIR" ] && [ -d "$NDK_DIR" ]; then
             export ANDROID_NDK_HOME="$NDK_DIR"
             echo -e "${GREEN}✓ NDK encontrado en local.properties: $NDK_DIR${NC}"
@@ -77,12 +81,12 @@ echo -e "  Build output: $BUILD_DIR"
 
 # Descargar dependencias
 echo -e "\n${BLUE}[3/5] Descargando dependencias...${NC}"
-./setup-dependencies.sh
+"$SCRIPT_DIR/setup-dependencies.sh"
 
 # Compilar OpenSSL
 echo -e "\n${BLUE}[4/5] Compilando dependencias nativas...${NC}"
 echo -e "${YELLOW}  [4.1/4.3] Compilando OpenSSL (esto puede tardar ~10 min)...${NC}"
-./telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh \
+"$PROJECT_ROOT/telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh" \
   -ndk "$NDK" \
   -abi "$ABI" \
   -api "$API" \
@@ -91,7 +95,7 @@ echo -e "${YELLOW}  [4.1/4.3] Compilando OpenSSL (esto puede tardar ~10 min)...$
 
 # Compilar libcurl
 echo -e "${YELLOW}  [4.2/4.3] Compilando libcurl...${NC}"
-./telegram-cloud-cpp/third_party/android_build_scripts/build_libcurl_android.sh \
+"$PROJECT_ROOT/telegram-cloud-cpp/third_party/android_build_scripts/build_libcurl_android.sh" \
   -ndk "$NDK" \
   -abi "$ABI" \
   -api "$API" \
@@ -101,7 +105,7 @@ echo -e "${YELLOW}  [4.2/4.3] Compilando libcurl...${NC}"
 
 # Compilar SQLCipher
 echo -e "${YELLOW}  [4.3/4.3] Compilando SQLCipher...${NC}"
-./telegram-cloud-cpp/third_party/android_build_scripts/build_sqlcipher_android.sh \
+"$PROJECT_ROOT/telegram-cloud-cpp/third_party/android_build_scripts/build_sqlcipher_android.sh" \
   -ndk "$NDK" \
   -abi "$ABI" \
   -api "$API" \
@@ -112,7 +116,7 @@ echo -e "${YELLOW}  [4.3/4.3] Compilando SQLCipher...${NC}"
 # Actualizar local.properties
 echo -e "\n${YELLOW}Actualizando android/local.properties...${NC}"
 ABI_NORMALIZED=${ABI//-/_}
-cat >> android/local.properties << EOF
+cat >> "$PROJECT_ROOT/android/local.properties" << EOF
 
 # Rutas de dependencias nativas (generadas por build-complete.sh)
 native.openssl.$ABI=$BUILD_DIR/openssl/build_${ABI_NORMALIZED}
@@ -124,7 +128,7 @@ echo -e "${GREEN}✓ local.properties actualizado${NC}"
 
 # Compilar APK
 echo -e "\n${BLUE}[5/5] Compilando APK...${NC}"
-cd android
+cd "$PROJECT_ROOT/android"
 ./gradlew assembleRelease
 
 APK_PATH="app/build/outputs/apk/release/app-release.apk"

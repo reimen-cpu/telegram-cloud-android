@@ -76,12 +76,13 @@ Write-Host "  Build output: $BUILD_DIR"
 
 # Descargar dependencias
 Write-Host "`n[3/5] Descargando dependencias..."
-& .\setup-dependencies.ps1
+& "$PSScriptRoot\setup-dependencies.ps1"
 
 # Compilar OpenSSL
 Write-Host "`n[4/5] Compilando dependencias nativas..."
 Write-ColorOutput Yellow "  [4.1/4.3] Compilando OpenSSL (esto puede tardar ~10 min)..."
-& .\telegram-cloud-cpp\third_party\android_build_scripts\build_openssl_android.ps1 `
+$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+& "$projectRoot\telegram-cloud-cpp\third_party\android_build_scripts\build_openssl_android.ps1" `
     -ndk $NDK `
     -abi $ABI `
     -api $API `
@@ -96,7 +97,7 @@ if ($LASTEXITCODE -ne 0) {
 # Compilar libcurl
 Write-ColorOutput Yellow "  [4.2/4.3] Compilando libcurl..."
 $ABI_NORMALIZED = $ABI -replace "-", "_"
-& .\telegram-cloud-cpp\third_party\android_build_scripts\build_libcurl_android.ps1 `
+& "$projectRoot\telegram-cloud-cpp\third_party\android_build_scripts\build_libcurl_android.ps1" `
     -ndk $NDK `
     -abi $ABI `
     -api $API `
@@ -111,7 +112,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # Compilar SQLCipher
 Write-ColorOutput Yellow "  [4.3/4.3] Compilando SQLCipher..."
-& .\telegram-cloud-cpp\third_party\android_build_scripts\build_sqlcipher_android.ps1 `
+& "$projectRoot\telegram-cloud-cpp\third_party\android_build_scripts\build_sqlcipher_android.ps1" `
     -ndk $NDK `
     -abi $ABI `
     -api $API `
@@ -126,7 +127,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # Actualizar local.properties
 Write-ColorOutput Yellow "`nActualizando android\local.properties..."
-$localPropsPath = "android\local.properties"
+$localPropsPath = Join-Path $projectRoot "android\local.properties"
 $propsContent = @"
 
 # Rutas de dependencias nativas (generadas por build-complete.ps1)
@@ -140,7 +141,7 @@ Write-ColorOutput Green "✓ local.properties actualizado"
 
 # Compilar APK
 Write-Host "`n[5/5] Compilando APK..."
-Set-Location android
+Set-Location (Join-Path $projectRoot "android")
 & .\gradlew.bat assembleRelease
 
 $APK_PATH = "app\build\outputs\apk\release\app-release.apk"
