@@ -14,7 +14,7 @@ Write-ColorOutput Green "╔═════════════════�
 Write-ColorOutput Green "║   Telegram Cloud Android - Build Complete         ║"
 Write-ColorOutput Green "╚════════════════════════════════════════════════════╝"
 
-# Verificar Git
+# Verificar Git y Bash
 Write-Host "`n[1/5] Verificando herramientas necesarias..."
 try {
     git --version | Out-Null
@@ -22,6 +22,54 @@ try {
 } catch {
     Write-ColorOutput Red "Error: Git no está instalado"
     exit 1
+}
+
+# Verificar Bash (necesario para compilar dependencias nativas)
+$bashPath = $null
+$bash = Get-Command bash -ErrorAction SilentlyContinue
+if ($bash) {
+    $bashPath = $bash.Source
+    Write-ColorOutput Green "✓ Bash disponible: $bashPath"
+} else {
+    # Buscar en ubicaciones comunes de Git for Windows
+    $gitBashPaths = @(
+        "C:\Program Files\Git\bin\bash.exe",
+        "C:\Program Files (x86)\Git\bin\bash.exe",
+        "$env:ProgramFiles\Git\bin\bash.exe",
+        "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
+    )
+    
+    foreach ($path in $gitBashPaths) {
+        if (Test-Path $path) {
+            $bashPath = $path
+            Write-ColorOutput Green "✓ Bash encontrado: $bashPath"
+            break
+        }
+    }
+}
+
+if (-not $bashPath) {
+    # Verificar si WSL está disponible
+    $wsl = Get-Command wsl -ErrorAction SilentlyContinue
+    if ($wsl) {
+        Write-ColorOutput Yellow "⚠ Bash no encontrado, pero WSL está disponible"
+        Write-Host "  Nota: La compilación puede ser más lenta con WSL"
+        Write-Host "  Recomendado: Instalar Git for Windows para mejor rendimiento"
+    } else {
+        Write-ColorOutput Red @"
+Error: Bash no encontrado. Necesario para compilar dependencias nativas.
+
+RECOMENDADO: Instalar Git for Windows
+  https://git-scm.com/download/win
+  Incluye bash, perl, y make necesarios para OpenSSL.
+
+ALTERNATIVA: Instalar WSL
+  wsl --install
+
+Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
+"@
+        exit 1
+    }
 }
 
 # Verificar NDK

@@ -3,301 +3,44 @@ param(
     [string]$abi = "arm64-v8a",
     [int]$api = 28,
     [string]$srcPath,
-    [string]$outDir
+    [string]$outDir,
+    [switch]$Verbose
 )
 
 $ErrorActionPreference = "Stop"
 
+# Enable verbose output if requested
+if ($Verbose) {
+    $VerbosePreference = "Continue"
+    Start-Transcript -Path "build-openssl.log" -Append
+}
+
 # Validate required parameters
 if (-not $ndk -or -not $srcPath -or -not $outDir) {
-    Write-Error "Usage: -ndk <ndk-path> -srcPath <openssl-source> -outDir <output-dir>"
-    Write-Host "Example: .\build_openssl_android.ps1 -ndk C:\Android\ndk\25.2.9519653 -srcPath C:\sources\openssl-3.2.0 -outDir C:\builds\openssl"
-    exit 1
-}
+    Write-Error @"
+Usage: -ndk <ndk-path> -srcPath <openssl-source> -outDir <output-dir>
 
-if (-not (Test-Path $srcPath)) {
-    Write-Error "OpenSSL source path not found: $srcPath"
-    exit 1
-}
+Example:
+  .\build_openssl_android.ps1 -ndk C:\Android\ndk\25.2.9519653 -srcPath C:\sources\openssl-3.2.0 -outDir C:\builds\openssl
 
-if (-not (Test-Path $ndk)) {
-    Write-Error "NDK path not found: $ndk"
-    exit 1
-}
-
-# Map ABI to OpenSSL architecture
-$archMap = @{
-    "arm64-v8a" = "android-arm64"
-    "armeabi-v7a" = "android-arm"
-    "x86" = "android-x86"
-    "x86_64" = "android-x86_64"
-}
-
-if (-not $archMap.ContainsKey($abi)) {
-    Write-Error "Unsupported ABI: $abi. Use: arm64-v8a, armeabi-v7a, x86, x86_64"
-    exit 1
-}
-
-$opensslTarget = $archMap[$abi]
-$abiNormalized = $abi -replace "-", "_"
-$buildDir = Join-Path $outDir "build_$abiNormalized"
-
-# Clean previous build
-if (Test-Path $buildDir) {
-    Write-Host "Cleaning previous build..."
-    Remove-Item -Recurse -Force $buildDir
-}
-
-New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
-
-# Copy sources to build dir (OpenSSL needs to configure in-place)
-Write-Host "Copying OpenSSL sources..."
-Copy-Item -Recurse -Force "$srcPath/*" $buildDir
-
-# Configure environment for NDK
-$ndkToolchain = Join-Path $ndk "toolchains/llvm/prebuilt/windows-x86_64"
-if (-not (Test-Path $ndkToolchain)) {
-    Write-Error "NDK toolchain not found: $ndkToolchain"
-    exit 1
-}
-
-$PATH_BACKUP = $env:PATH
-$env:ANDROID_NDK_ROOT = $ndk
-$env:ANDROID_NDK_HOME = $ndk
-
-# CRITICAL: Add NDK to PATH first (use proper Windows path separators)
-$ndkBinPath = Join-Path $ndkToolchain "bin"
-$env:PATH = "$ndkBinPath;$env:PATH"
-Write-Host "✓ NDK toolchain agregado al PATH: $ndkBinPath"
-
-# Debug: Show NDK environment
-Write-Host "  ANDROID_NDK_ROOT: $env:ANDROID_NDK_ROOT"
-
-Push-Location $buildDir
-
-try {
-    Write-Host "Configuring OpenSSL for $opensslTarget (API $api)..."
-    
-    # Check if perl is available - prioritize Strawberry Perl over Git Perl
-    # Git Perl is minimal and lacks modules needed by OpenSSL (Locale::Maketext::Simple)
-    $perlPath = $null
-    
-    # First try: Strawberry Perl (complete distribution with all modules)
-    $strawberryPaths = @(
-        "C:\Strawberry\perl\bin",
-        "$env:SystemDrive\Strawberry\perl\bin",
-        "$env:ProgramFiles\Strawberry\perl\bin"
-    )
-    
-    foreach ($sbPath in $strawberryPaths) {
-        if (Test-Path "$sbPath\perl.exe") {
-            Write-Host "✓ Strawberry Perl encontrado: $sbPath"
-            # PREPEND to PATH to keep NDK at front
-            $env:PATH = "$sbPath;$env:PATH"
-            $perlPath = Get-Command perl -ErrorAction SilentlyContinue
-            break
-        }
-    }
-    
-    # Second try: System PATH
-    if (-not $perlPath) {
-        $perlPath = Get-Command perl -ErrorAction SilentlyContinue
-        if ($perlPath) {
-            Write-Host "✓ Perl encontrado en PATH: $($perlPath.Source)"
-        }
-    }
-    
-    # Last resort: Git for Windows (may lack required modules)
-    if (-not $perlPath) {
-        $gitPerlPaths = @(
-            "C:\Program Files\Git\usr\bin",
-            "C:\Program Files (x86)\Git\usr\bin",
-            "$env:ProgramFiles\Git\usr\bin",
-            "${env:ProgramFiles(x86)}\Git\usr\bin"
-        )
-        
-        foreach ($gitPath in $gitPerlPaths) {
-            if (Test-Path "$gitPath\perl.exe") {
-                Write-Host "⚠ Usando Git Perl (puede faltar módulos). Recomendado: Strawberry Perl"
-                Write-Host "  Descargar: https://strawberryperl.com/"
-                $env:PATH = "$gitPath;$env:PATH"
-                $perlPath = Get-Command perl -ErrorAction SilentlyContinue
-                break
-            }
-        }
-    }
-    
-    if (-not $perlPath) {
-        throw @"
-Perl no encontrado. OpenSSL requiere Perl con módulos completos.
-
-RECOMENDADO - Instalar Strawberry Perl:
-  https://strawberryperl.com/
-  Incluye todos los módulos que OpenSSL necesita.
-
-Alternativas:
-  - Usar WSL: wsl --install y compilar desde Linux
-
-Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
+Optional parameters:
+  -abi <abi>        Default: arm64-v8a (options: arm64-v8a, armeabi-v7a, x86, x86_64)
+  -api <api-level>  Default: 28
+  -Verbose          Enable detailed logging
 "@
-    }
-    
-    Write-Host "✓ Perl: $($perlPath.Source)"
-    
-    # Check if make is available (OpenSSL needs GNU make)
-    $makePath = Get-Command make -ErrorAction SilentlyContinue
-    
-    if (-not $makePath) {
-        # Try gmake (common in Strawberry Perl)
-        $makePath = Get-Command gmake -ErrorAction SilentlyContinue
-        if ($makePath) {
-            Set-Alias -Name make -Value gmake -Scope Script
-            Write-Host "✓ Make: gmake (Strawberry Perl)"
-        }
-    }
-    
-    if (-not $makePath) {
-        # Search in Strawberry Perl installation
-        $strawberryMakePaths = @(
-            "C:\Strawberry\c\bin\gmake.exe",
-            "C:\Strawberry\c\bin\mingw32-make.exe"
-        )
-        
-        foreach ($makeBin in $strawberryMakePaths) {
-            if (Test-Path $makeBin) {
-                $strawberryBinDir = Split-Path -Parent $makeBin
-                # PREPEND to keep NDK/Perl at front
-                $env:PATH = "$strawberryBinDir;$env:PATH"
-                $makeCmd = Split-Path -Leaf $makeBin
-                $makeCmd = $makeCmd -replace '\.exe$', ''
-                Set-Alias -Name make -Value $makeCmd -Scope Script
-                Write-Host "✓ Make: $makeCmd (Strawberry Perl)"
-                $makePath = Get-Command $makeCmd -ErrorAction SilentlyContinue
-                break
-            }
-        }
-    }
-    
-    if (-not $makePath) {
-        # Try Git for Windows
-        $gitBinPaths = @(
-            "C:\Program Files\Git\usr\bin",
-            "C:\Program Files (x86)\Git\usr\bin",
-            "$env:ProgramFiles\Git\usr\bin"
-        )
-        foreach ($gitPath in $gitBinPaths) {
-            if (Test-Path "$gitPath\make.exe") {
-                # PREPEND to keep NDK/Perl at front
-                $env:PATH = "$gitPath;$env:PATH"
-                Write-Host "✓ Make encontrado en Git for Windows"
-                $makePath = Get-Command make -ErrorAction SilentlyContinue
-                break
-            }
-        }
-    }
-    
-    if (-not $makePath) {
-        throw @"
-Make no encontrado. OpenSSL requiere GNU Make para compilar.
+    exit 1
+}
 
-RECOMENDADO:
-- Strawberry Perl incluye gmake: https://strawberryperl.com/
-  Ya tienes Perl, verifica que C:\Strawberry\c\bin esté en PATH
-
-Alternativa:
-- Instalar Git for Windows: https://git-scm.com/download/win
-
-Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
-"@
+# Helper function to find bash
+function Find-Bash {
+    # Check if bash is in PATH
+    $bash = Get-Command bash -ErrorAction SilentlyContinue
+    if ($bash) {
+        Write-Verbose "Found bash in PATH: $($bash.Source)"
+        return $bash.Source
     }
     
-    # Configure NDK environment variables for OpenSSL
-    # Problem: OpenSSL busca "aarch64-linux-android-clang" pero NDK r25c tiene "aarch64-linux-android28-clang"
-    # Solución: Crear wrappers temporales sin el número API
-    $target = switch ($abi) {
-        "arm64-v8a" { "aarch64-linux-android" }
-        "armeabi-v7a" { "armv7a-linux-androideabi" }
-        "x86" { "i686-linux-android" }
-        "x86_64" { "x86_64-linux-android" }
-    }
-    
-    # Crear directorio temporal para wrappers
-    $wrapperDir = Join-Path $buildDir "ndk_wrappers"
-    New-Item -ItemType Directory -Force -Path $wrapperDir | Out-Null
-    
-    # Crear wrappers que llamen a los compiladores reales con API level
-    $compilerReal = Join-Path $ndkBinPath "$target$api-clang.cmd"
-    $compilerPlusReal = Join-Path $ndkBinPath "$target$api-clang++.cmd"
-    $arReal = Join-Path $ndkBinPath "llvm-ar.exe"
-    $ranlibReal = Join-Path $ndkBinPath "llvm-ranlib.exe"
-    
-    if (-not (Test-Path $compilerReal)) {
-        throw "NDK compiler not found: $compilerReal`nVerify NDK installation."
-    }
-    
-    # Crear wrappers .bat (sin extensión .cmd para compatibilidad con Perl/make)
-    $wrapperContent = "@echo off`r`n`"$compilerReal`" %*"
-    $wrapperPlusContent = "@echo off`r`n`"$compilerPlusReal`" %*"
-    
-    # CRÍTICO: OpenSSL busca "clang" genérico PRIMERO (sin prefijo target)
-    # Si no lo encuentra, busca "$triarch-gcc" que falla en NDK r25c
-    @(
-        "clang.bat",
-        "clang.cmd",
-        "clang.exe"  # .exe para que which() lo encuentre
-    ) | ForEach-Object {
-        $wrapperPath = Join-Path $wrapperDir $_
-        $wrapperContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
-    }
-    
-    @(
-        "clang++.bat",
-        "clang++.cmd",
-        "clang++.exe"
-    ) | ForEach-Object {
-        $wrapperPath = Join-Path $wrapperDir $_
-        $wrapperPlusContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
-    }
-    
-    # También crear variantes con prefijo target (por si acaso)
-    @(
-        "$target-clang.bat",
-        "$target-clang.cmd", 
-        "$target-clang.exe"
-    ) | ForEach-Object {
-        $wrapperPath = Join-Path $wrapperDir $_
-        $wrapperContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
-    }
-    
-    @(
-        "$target-clang++.bat",
-        "$target-clang++.cmd",
-        "$target-clang++.exe"
-    ) | ForEach-Object {
-        $wrapperPath = Join-Path $wrapperDir $_
-        $wrapperPlusContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
-    }
-    
-    # Copiar ar y ranlib también al wrapper dir para que estén disponibles
-    Copy-Item $arReal (Join-Path $wrapperDir "ar.exe") -Force
-    Copy-Item $arReal (Join-Path $wrapperDir "$target-ar.exe") -Force
-    Copy-Item $ranlibReal (Join-Path $wrapperDir "ranlib.exe") -Force
-    Copy-Item $ranlibReal (Join-Path $wrapperDir "$target-ranlib.exe") -Force
-    
-    # Agregar wrapper dir al PATH (ANTES del NDK real para que se encuentren primero)
-    $env:PATH = "$wrapperDir;$env:PATH"
-    
-    Write-Host "✓ NDK compiler wrappers creados (múltiples variantes)"
-    Write-Host "  clang → $target$api-clang.cmd (genérico, para OpenSSL which())"
-    Write-Host "  $target-clang → $target$api-clang.cmd (con target)"
-    Write-Host "  ar.exe, ranlib.exe copiados"
-    Write-Host "  Wrapper dir en PATH: $wrapperDir"
-    
-    # SOLUCIÓN: Ejecutar Configure desde bash (Git bash) donde OpenSSL funciona mejor
-    # En Windows, OpenSSL tiene problemas detectando compiladores, bash funciona mejor
-    
-    # Buscar bash de Git for Windows
-    $bashPath = $null
+    # Search common Git for Windows locations
     $gitBashPaths = @(
         "C:\Program Files\Git\bin\bash.exe",
         "C:\Program Files (x86)\Git\bin\bash.exe",
@@ -305,136 +48,112 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
         "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
     )
     
-    foreach ($gitPath in $gitBashPaths) {
-        if (Test-Path $gitPath) {
-            $bashPath = $gitPath
-            break
+    foreach ($path in $gitBashPaths) {
+        if (Test-Path $path) {
+            Write-Verbose "Found bash at: $path"
+            return $path
         }
     }
     
-    if (-not $bashPath) {
-        throw @"
-Bash no encontrado. Necesario para ejecutar OpenSSL Configure en Windows.
+    throw @"
+Bash not found. Required to build OpenSSL on Windows.
 
-Instalar Git for Windows: https://git-scm.com/download/win
-Incluye bash que OpenSSL necesita para detectar compiladores correctamente.
+RECOMMENDED: Install Git for Windows
+  https://git-scm.com/download/win
+  Includes bash, perl, and make needed for OpenSSL.
+
+ALTERNATIVE: Use WSL
+  wsl --install
+
+After installation, restart PowerShell and run this script again.
 "@
-    }
+}
+
+# Helper function to convert Windows path to Unix path
+function Convert-WindowsPathToUnix {
+    param([string]$path)
     
-    Write-Host "✓ Bash encontrado: $bashPath"
-    Write-Host ""
-    
-    # Preparar script de configuración para bash
-    $installPrefix = $buildDir -replace '\\', '/'
-    $ndkPath = $ndk -replace '\\', '/'
-    $ndkBinPathUnix = $ndkBinPath -replace '\\', '/'
-    
-    # CRÍTICO: Configurar PATH para usar Strawberry Perl (completo) en lugar de Git Perl (mínimo)
-    # Git Perl le falta Locale::Maketext::Simple que OpenSSL necesita
-    $strawberryPerlBin = ""
-    $strawberryMakeBin = ""
-    
-    # Buscar Strawberry Perl
-    $strawberryPaths = @("C:\Strawberry\perl\bin", "$env:SystemDrive\Strawberry\perl\bin")
-    foreach ($sbPath in $strawberryPaths) {
-        if (Test-Path "$sbPath\perl.exe") {
-            $strawberryPerlBin = $sbPath -replace '\\', '/'
-            $strawberryMakeBin = ($sbPath -replace 'perl\\bin', 'c\bin') -replace '\\', '/'
-            break
+    # Resolve to absolute path if relative
+    if (-not [System.IO.Path]::IsPathRooted($path)) {
+        $path = Resolve-Path $path -ErrorAction SilentlyContinue
+        if (-not $path) {
+            # Path doesn't exist yet, make it absolute
+            $path = Join-Path (Get-Location) $path
         }
     }
     
-    if (-not $strawberryPerlBin) {
-        throw "Strawberry Perl no encontrado. Requerido para compilar OpenSSL."
+    # Convert to string if it's a PathInfo object
+    $path = $path.ToString()
+    
+    # Convert backslashes to forward slashes
+    $path = $path -replace '\\', '/'
+    
+    # Convert drive letter (C:\ → /c/)
+    if ($path -match '^([A-Z]):') {
+        $drive = $matches[1].ToLower()
+        $path = $path -replace '^[A-Z]:', "/$drive"
     }
     
-    # Usar rutas completas para evitar que bash use sus propios binarios (/usr/bin/perl)
-    $perlExe = "$strawberryPerlBin/perl.exe" -replace '\\', '/'
-    $makeExe = "$strawberryMakeBin/gmake.exe" -replace '\\', '/'
-    $numCores = [Environment]::ProcessorCount
-    
-    # Configurar compiladores para OpenSSL (rutas absolutas)
-    $ccPath = (Join-Path $ndkBinPath "$target$api-clang.cmd") -replace '\\', '/'
-    $arPath = (Join-Path $ndkBinPath "llvm-ar.exe") -replace '\\', '/'
-    $ranlibPath = (Join-Path $ndkBinPath "llvm-ranlib.exe") -replace '\\', '/'
-    
-    # Usar @' '@ para evitar expansión de variables en PowerShell
-    # CRÍTICO: Configure + make + install todo en bash (mismo entorno)
-    $configScript = @'
-#!/bin/bash
-set -e  # Exit on error
+    return $path
+}
 
-# CRITICAL: Configurar compiladores ANTES de Configure
-export CC="{7}"
-export AR="{8}"
-export RANLIB="{9}"
-export PATH="{0}:{1}:$PATH"
-export ANDROID_NDK_ROOT="{2}"
-export ANDROID_NDK_HOME="{2}"
-cd "{3}"
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+Write-Host "OpenSSL Build (PowerShell Orchestrator)"
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "OpenSSL Configure + Build (todo desde bash)"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Perl: {4}"
-echo "Make: {5}"
-echo "CC: {7}"
-echo "AR: {8}"
-echo "NDK: {2}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-echo ""
-echo "[1/3] Configuring OpenSSL..."
-{4} Configure android-arm64 -D__ANDROID_API__={6} no-shared \
-  --prefix={3}/installed \
-  --openssldir={3}/installed
-
-echo ""
-echo "[2/3] Building OpenSSL (10-15 min)..."
-{5} -j{10}
-
-echo ""
-echo "[3/3] Installing OpenSSL..."
-{5} install_sw
-
-echo ""
-echo "✓ OpenSSL compiled successfully from bash"
-'@ -f $strawberryPerlBin, $ndkBinPathUnix, $ndkPath, $installPrefix, $perlExe, $makeExe, $api, $ccPath, $arPath, $ranlibPath, $numCores
-    
-    $configScriptPath = Join-Path $buildDir "configure_openssl.sh"
-    $configScript | Out-File -FilePath $configScriptPath -Encoding ASCII -Force
-    
-    Write-Host "✓ Configuración para bash:"
-    Write-Host "  Perl: $perlExe"
-    Write-Host "  Make: $makeExe"
-    Write-Host "  CC: $ccPath"
-    Write-Host "  AR: $arPath"
-    Write-Host "  NDK: $ndkPath"
-    
-    Write-Host "`nEjecutando OpenSSL (Configure + Build + Install) desde bash..."
-    Write-Host "Script: $configScriptPath"
-    Write-Host ""
-    
-    & $bashPath $configScriptPath
-    
-    if ($LASTEXITCODE -ne 0) {
-        throw "OpenSSL build failed with exit code: $LASTEXITCODE"
-    }
-    
-    Write-Host ""
-    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    Write-Host "✓ OpenSSL compilado exitosamente"
-    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    Write-Host "Location: $buildDir/installed"
-    Write-Host "Include: $buildDir/installed/include"
-    Write-Host "Libs: $buildDir/installed/lib"
-    
+# Find bash
+Write-Host "Detecting bash..."
+try {
+    $bashPath = Find-Bash
+    Write-Host "✓ Bash found: $bashPath"
 } catch {
-    Write-Error "Error building OpenSSL: $_"
-    Pop-Location
-    $env:PATH = $PATH_BACKUP
+    Write-Error $_
     exit 1
 }
 
-Pop-Location
-$env:PATH = $PATH_BACKUP
+# Convert paths to Unix format
+Write-Verbose "Converting Windows paths to Unix format..."
+$ndkUnix = Convert-WindowsPathToUnix $ndk
+$srcPathUnix = Convert-WindowsPathToUnix $srcPath
+$outDirUnix = Convert-WindowsPathToUnix $outDir
+
+if ($Verbose) {
+    Write-Verbose "Path conversions:"
+    Write-Verbose "  NDK:     $ndk → $ndkUnix"
+    Write-Verbose "  Source:  $srcPath → $srcPathUnix"
+    Write-Verbose "  Output:  $outDir → $outDirUnix"
+}
+
+# Get shell script path
+$shellScript = Join-Path $PSScriptRoot "build_openssl_android.sh"
+if (-not (Test-Path $shellScript)) {
+    Write-Error "Shell script not found: $shellScript"
+    exit 1
+}
+
+$shellScriptUnix = Convert-WindowsPathToUnix $shellScript
+
+Write-Host ""
+Write-Host "Executing native shell script..."
+Write-Verbose "Command: bash `"$shellScriptUnix`" -ndk `"$ndkUnix`" -abi `"$abi`" -api $api -srcPath `"$srcPathUnix`" -outDir `"$outDirUnix`""
+
+# Execute bash script
+& $bashPath $shellScriptUnix -ndk $ndkUnix -abi $abi -api $api -srcPath $srcPathUnix -outDir $outDirUnix
+
+# Check exit code
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "OpenSSL build failed with exit code: $LASTEXITCODE"
+    if ($Verbose) {
+        Stop-Transcript
+    }
+    exit $LASTEXITCODE
+}
+
+Write-Host ""
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+Write-Host "✓ PowerShell orchestrator completed successfully"
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if ($Verbose) {
+    Stop-Transcript
+}

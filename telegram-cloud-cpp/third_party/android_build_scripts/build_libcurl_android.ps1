@@ -4,118 +4,135 @@ param(
     [int]$api = 28,
     [string]$opensslDir,
     [string]$srcPath,
-    [string]$outDir
+    [string]$outDir,
+    [switch]$Verbose
 )
 
 $ErrorActionPreference = "Stop"
 
+# Enable verbose output if requested
+if ($Verbose) {
+    $VerbosePreference = "Continue"
+    Start-Transcript -Path "build-libcurl.log" -Append
+}
+
 # Validate required parameters
 if (-not $ndk -or -not $opensslDir -or -not $srcPath -or -not $outDir) {
-    Write-Error "Usage: -ndk <ndk-path> -opensslDir <openssl-build-dir> -srcPath <curl-source> -outDir <output-dir>"
-    Write-Host "Example: .\build_libcurl_android.ps1 -ndk C:\Android\ndk\25.2.9519653 -opensslDir C:\builds\openssl\build_arm64_v8a -srcPath C:\sources\curl-8.7.1 -outDir C:\builds\libcurl"
+    Write-Error @"
+Usage: -ndk <ndk-path> -opensslDir <openssl-dir> -srcPath <curl-source> -outDir <output-dir>
+
+Example:
+  .\build_libcurl_android.ps1 -ndk C:\Android\ndk\25.2.9519653 -opensslDir C:\builds\openssl\build_arm64_v8a\installed -srcPath C:\sources\curl-8.7.1 -outDir C:\builds\libcurl
+
+Optional parameters:
+  -abi <abi>        Default: arm64-v8a
+  -api <api-level>  Default: 28
+  -Verbose          Enable detailed logging
+"@
     exit 1
 }
 
-if (-not (Test-Path $srcPath)) {
-    Write-Error "libcurl source not found: $srcPath"
-    exit 1
-}
-
-if (-not (Test-Path $ndk)) {
-    Write-Error "NDK path not found: $ndk"
-    exit 1
-}
-
-if (-not (Test-Path "$opensslDir/installed")) {
-    Write-Error "OpenSSL build directory not found: $opensslDir/installed"
-    Write-Host "Make sure to build OpenSSL first."
-    exit 1
-}
-
-$abiNormalized = $abi -replace "-", "_"
-$buildDir = Join-Path $outDir "build_$abiNormalized"
-$installDir = Join-Path $buildDir "installed"
-
-# Clean previous build
-if (Test-Path $buildDir) {
-    Write-Host "Cleaning previous build..."
-    Remove-Item -Recurse -Force $buildDir
-}
-
-New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
-New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-
-$toolchain = Join-Path $ndk "build/cmake/android.toolchain.cmake"
-if (-not (Test-Path $toolchain)) {
-    Write-Error "CMake toolchain not found: $toolchain"
-    exit 1
-}
-
-# Check if CMake is available
-$cmakePath = Get-Command cmake -ErrorAction SilentlyContinue
-if (-not $cmakePath) {
-    Write-Error "CMake is not installed. Download from: https://cmake.org/download/"
-    exit 1
-}
-
-Push-Location $buildDir
-
-try {
-    Write-Host "Configuring libcurl for $abi (API $api)..."
-    Write-Host "OpenSSL: $opensslDir/installed"
+# Helper function to find bash
+function Find-Bash {
+    $bash = Get-Command bash -ErrorAction SilentlyContinue
+    if ($bash) {
+        return $bash.Source
+    }
     
-    $cmakeArgs = @(
-        "-G", "Ninja",
-        "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
-        "-DANDROID_ABI=$abi",
-        "-DANDROID_PLATFORM=android-$api",
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DCMAKE_INSTALL_PREFIX=$installDir",
-        "-DBUILD_CURL_EXE=OFF",
-        "-DBUILD_SHARED_LIBS=OFF",
-        "-DCURL_STATICLIB=ON",
-        "-DCURL_USE_OPENSSL=ON",
-        "-DOPENSSL_ROOT_DIR=$opensslDir/installed",
-        "-DOPENSSL_INCLUDE_DIR=$opensslDir/installed/include",
-        "-DOPENSSL_CRYPTO_LIBRARY=$opensslDir/installed/lib/libcrypto.a",
-        "-DOPENSSL_SSL_LIBRARY=$opensslDir/installed/lib/libssl.a",
-        "-DCURL_DISABLE_LDAP=ON",
-        "-DCURL_DISABLE_LDAPS=ON",
-        "-DCURL_CA_BUNDLE=none",
-        "-DCURL_CA_PATH=none",
-        "-S", $srcPath,
-        "-B", "."
+    $gitBashPaths = @(
+        "C:\Program Files\Git\bin\bash.exe",
+        "C:\Program Files (x86)\Git\bin\bash.exe",
+        "$env:ProgramFiles\Git\bin\bash.exe",
+        "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
     )
     
-    & cmake @cmakeArgs
-    
-    if ($LASTEXITCODE -ne 0) {
-        throw "CMake configuration failed with exit code: $LASTEXITCODE"
+    foreach ($path in $gitBashPaths) {
+        if (Test-Path $path) {
+            return $path
+        }
     }
     
-    Write-Host "Building libcurl..."
-    & cmake --build . --config Release --parallel $([Environment]::ProcessorCount)
+    throw "Bash not found. Install Git for Windows: https://git-scm.com/download/win"
+}
+
+# Helper function to convert Windows path to Unix path
+function Convert-WindowsPathToUnix {
+    param([string]$path)
     
-    if ($LASTEXITCODE -ne 0) {
-        throw "Build failed with exit code: $LASTEXITCODE"
+    if (-not [System.IO.Path]::IsPathRooted($path)) {
+        $path = Resolve-Path $path -ErrorAction SilentlyContinue
+        if (-not $path) {
+            $path = Join-Path (Get-Location) $path
+        }
     }
     
-    Write-Host "Installing libcurl..."
-    & cmake --install . --config Release
+    $path = $path.ToString()
+    $path = $path -replace '\\', '/'
     
-    if ($LASTEXITCODE -ne 0) {
-        throw "Install failed with exit code: $LASTEXITCODE"
+    if ($path -match '^([A-Z]):') {
+        $drive = $matches[1].ToLower()
+        $path = $path -replace '^[A-Z]:', "/$drive"
     }
     
-    Write-Host "`n✓ libcurl built successfully"
-    Write-Host "Location: $installDir"
-    Write-Host "Include: $installDir/include"
-    Write-Host "Libs: $installDir/lib"
-    
+    return $path
+}
+
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+Write-Host "libcurl Build (PowerShell Orchestrator)"
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Find bash
+Write-Host "Detecting bash..."
+try {
+    $bashPath = Find-Bash
+    Write-Host "✓ Bash found: $bashPath"
 } catch {
-    Write-Error "Error building libcurl: $_"
-    Pop-Location
+    Write-Error $_
     exit 1
 }
 
-Pop-Location
+# Convert paths to Unix format
+$ndkUnix = Convert-WindowsPathToUnix $ndk
+$opensslDirUnix = Convert-WindowsPathToUnix $opensslDir
+$srcPathUnix = Convert-WindowsPathToUnix $srcPath
+$outDirUnix = Convert-WindowsPathToUnix $outDir
+
+if ($Verbose) {
+    Write-Verbose "Path conversions:"
+    Write-Verbose "  NDK:     $ndk → $ndkUnix"
+    Write-Verbose "  OpenSSL: $opensslDir → $opensslDirUnix"
+    Write-Verbose "  Source:  $srcPath → $srcPathUnix"
+    Write-Verbose "  Output:  $outDir → $outDirUnix"
+}
+
+# Get shell script path
+$shellScript = Join-Path $PSScriptRoot "build_libcurl_android.sh"
+if (-not (Test-Path $shellScript)) {
+    Write-Error "Shell script not found: $shellScript"
+    exit 1
+}
+
+$shellScriptUnix = Convert-WindowsPathToUnix $shellScript
+
+Write-Host ""
+Write-Host "Executing native shell script..."
+
+# Execute bash script
+& $bashPath $shellScriptUnix -ndk $ndkUnix -abi $abi -api $api -opensslDir $opensslDirUnix -srcPath $srcPathUnix -outDir $outDirUnix
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "libcurl build failed with exit code: $LASTEXITCODE"
+    if ($Verbose) {
+        Stop-Transcript
+    }
+    exit $LASTEXITCODE
+}
+
+Write-Host ""
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+Write-Host "✓ PowerShell orchestrator completed successfully"
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if ($Verbose) {
+    Stop-Transcript
+}
