@@ -9,8 +9,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if (-not $ndk -or -not $opensslDir -or -not $srcPath) {
-    Write-Error "Uso: -ndk <ndk-path> -opensslDir <openssl-build-dir> -srcPath <curl-source> -outDir <output-dir>"
+if (-not $ndk -or -not $opensslDir -or -not $srcPath -or -not $outDir) {
+    Write-Error "Usage: -ndk <ndk-path> -opensslDir <openssl-build-dir> -srcPath <curl-source> -outDir <output-dir>"
+    Write-Host "Example: .\build_libcurl_android.ps1 -ndk C:\Android\ndk\25.2.9519653 -opensslDir C:\builds\openssl\build_arm64_v8a -srcPath C:\sources\curl-8.7.1 -outDir C:\builds\libcurl"
     exit 1
 }
 
