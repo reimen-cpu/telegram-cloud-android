@@ -228,26 +228,49 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     # Crear wrappers que llamen a los compiladores reales con API level
     $compilerReal = Join-Path $ndkBinPath "$target$api-clang.cmd"
     $compilerPlusReal = Join-Path $ndkBinPath "$target$api-clang++.cmd"
+    $arReal = Join-Path $ndkBinPath "llvm-ar.exe"
+    $ranlibReal = Join-Path $ndkBinPath "llvm-ranlib.exe"
     
     if (-not (Test-Path $compilerReal)) {
         throw "NDK compiler not found: $compilerReal`nVerify NDK installation."
     }
     
-    # Wrapper para clang (sin número API en el nombre)
-    $clangWrapper = Join-Path $wrapperDir "$target-clang.cmd"
-    "@echo off`n`"$compilerReal`" %*" | Out-File -FilePath $clangWrapper -Encoding ASCII
+    # Crear wrappers .bat (sin extensión .cmd para compatibilidad con Perl/make)
+    $wrapperContent = "@echo off`r`n`"$compilerReal`" %*"
+    $wrapperPlusContent = "@echo off`r`n`"$compilerPlusReal`" %*"
     
-    # Wrapper para clang++
-    $clangPlusWrapper = Join-Path $wrapperDir "$target-clang++.cmd"
-    "@echo off`n`"$compilerPlusReal`" %*" | Out-File -FilePath $clangPlusWrapper -Encoding ASCII
+    # Crear múltiples variantes del nombre para máxima compatibilidad
+    @(
+        "$target-clang.bat",
+        "$target-clang.cmd", 
+        "$target-clang"
+    ) | ForEach-Object {
+        $wrapperPath = Join-Path $wrapperDir $_
+        $wrapperContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
+    }
     
-    # Agregar wrapper dir al PATH (ANTES del NDK real)
+    @(
+        "$target-clang++.bat",
+        "$target-clang++.cmd",
+        "$target-clang++"
+    ) | ForEach-Object {
+        $wrapperPath = Join-Path $wrapperDir $_
+        $wrapperPlusContent | Out-File -FilePath $wrapperPath -Encoding ASCII -Force
+    }
+    
+    # Copiar ar y ranlib también al wrapper dir para que estén disponibles
+    Copy-Item $arReal (Join-Path $wrapperDir "ar.exe") -Force
+    Copy-Item $arReal (Join-Path $wrapperDir "$target-ar.exe") -Force
+    Copy-Item $ranlibReal (Join-Path $wrapperDir "ranlib.exe") -Force
+    Copy-Item $ranlibReal (Join-Path $wrapperDir "$target-ranlib.exe") -Force
+    
+    # Agregar wrapper dir al PATH (ANTES del NDK real para que se encuentren primero)
     $env:PATH = "$wrapperDir;$env:PATH"
     
-    Write-Host "✓ NDK compiler wrappers creados"
-    Write-Host "  $target-clang.cmd → $target$api-clang.cmd"
+    Write-Host "✓ NDK compiler wrappers creados (múltiples variantes)"
+    Write-Host "  $target-clang (.bat, .cmd, sin ext) → $target$api-clang.cmd"
+    Write-Host "  ar.exe, ranlib.exe copiados"
     Write-Host "  Wrapper dir: $wrapperDir"
-    Write-Host "  ANDROID_NDK_HOME: $env:ANDROID_NDK_HOME"
     
     # Configure OpenSSL with correct parameters
     $installPrefix = $buildDir -replace '\\', '/'
