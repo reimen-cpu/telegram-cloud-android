@@ -72,8 +72,30 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
     }
 }
 
+# Inicializar submódulos si es necesario
+Write-Host "`n[2/6] Verificando submódulos de Git..."
+$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$telegramCppPath = Join-Path $projectRoot "telegram-cloud-cpp"
+
+if (-not (Test-Path "$telegramCppPath\.git")) {
+    Write-Host "Inicializando submódulos de Git..."
+    Push-Location $projectRoot
+    try {
+        git submodule update --init --recursive
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput Red "Error al inicializar submódulos"
+            exit 1
+        }
+        Write-ColorOutput Green "✓ Submódulos inicializados correctamente"
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-ColorOutput Green "✓ Submódulos ya están inicializados"
+}
+
 # Verificar NDK
-Write-Host "`n[2/5] Verificando Android NDK..."
+Write-Host "`n[3/6] Verificando Android NDK..."
 $NDK = $env:ANDROID_NDK_HOME
 if (-not $NDK) {
     $NDK = $env:NDK_HOME
@@ -123,11 +145,11 @@ Write-Host "  Dependencias: $DEPS_DIR"
 Write-Host "  Build output: $BUILD_DIR"
 
 # Descargar dependencias
-Write-Host "`n[3/5] Descargando dependencias..."
+Write-Host "`n[4/6] Descargando dependencias..."
 & "$PSScriptRoot\setup-dependencies.ps1"
 
 # Compilar OpenSSL
-Write-Host "`n[4/5] Compilando dependencias nativas..."
+Write-Host "`n[5/6] Compilando dependencias nativas..."
 Write-ColorOutput Yellow "  [4.1/4.3] Compilando OpenSSL (esto puede tardar ~10 min)..."
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 & "$projectRoot\telegram-cloud-cpp\third_party\android_build_scripts\build_openssl_android.ps1" `
@@ -188,7 +210,7 @@ Add-Content -Path $localPropsPath -Value $propsContent
 Write-ColorOutput Green "✓ local.properties actualizado"
 
 # Compilar APK
-Write-Host "`n[5/5] Compilando APK..."
+Write-Host "`n[6/6] Compilando APK..."
 Set-Location (Join-Path $projectRoot "android")
 & .\gradlew.bat assembleRelease
 
