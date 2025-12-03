@@ -83,6 +83,8 @@ cd android
 4. **CMake 3.22** o superior (incluido con Android SDK)
 5. **Git** para clonar el repositorio
 
+**Windows:** Requiere herramientas adicionales (Perl, Bash). Ver [REQUISITOS_WINDOWS.md](REQUISITOS_WINDOWS.md) para guía completa.
+
 ### Paso 1: Clonar el Repositorio
 
 ```bash
@@ -379,6 +381,7 @@ Para reportar bugs o solicitar features, por favor abre un issue en GitHub.
 
 ## Documentación Adicional
 
+- [REQUISITOS_WINDOWS.md](REQUISITOS_WINDOWS.md) - **Requisitos y guía para compilar en Windows**
 - [BUILD_NATIVE_DEPENDENCIES.md](BUILD_NATIVE_DEPENDENCIES.md) - Guía detallada de compilación de dependencias nativas
 - [FDROID_COMPLIANCE.md](FDROID_COMPLIANCE.md) - Verificación de cumplimiento con políticas de F-Droid
 - [telegram-cloud-cpp/README-android.md](telegram-cloud-cpp/README-android.md) - Detalles técnicos de integración JNI
