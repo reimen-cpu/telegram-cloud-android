@@ -13,8 +13,8 @@ Descarga la APK directamente desde: https://github.com/reimen-cpu/telegram-cloud
 ### Opción B: Build Automático desde Código Fuente
 
 **Requisitos previos:**
-- **Windows:** Git for Windows (incluye Perl + Bash): https://git-scm.com/download/win
-- **Linux/macOS:** `git`, `wget`, `tar`, `perl`, `make`
+- **Windows:** Git for Windows (incluye bash, perl, make): https://git-scm.com/download/win
+- **Linux/macOS:** `bash`, `perl`, `make`, `git`
 - Android SDK + NDK r25c (25.2.9519653)
 
 ```bash
@@ -33,14 +33,15 @@ cd telegram-cloud-android
 ```
 
 El script automático:
-1. ✓ Descarga OpenSSL, libcurl y SQLCipher
-2. ✓ Compila las tres librerías para Android (requiere Perl + Bash)
-3. ✓ Configura `local.properties` automáticamente
-4. ✓ Genera la APK release
+1. ✓ Verifica bash y herramientas necesarias
+2. ✓ Descarga OpenSSL, libcurl y SQLCipher
+3. ✓ Compila las tres librerías para Android
+4. ✓ Configura `local.properties` automáticamente
+5. ✓ Genera la APK release
 
-**Tiempo estimado:** 20-40 minutos (dependiendo de tu hardware).
+**Tiempo estimado:** 15-25 minutos (dependiendo de tu hardware).
 
-**Nota:** En Windows, asegúrate de tener Git for Windows instalado. Incluye Perl y Bash necesarios para compilar OpenSSL y SQLCipher.
+**Nota para Windows:** Git for Windows incluye bash, perl y make necesarios para compilar OpenSSL. Si no lo tienes instalado, el script te mostrará instrucciones claras de instalación.
 
 ## Características
 
@@ -250,14 +251,22 @@ F-Droid compilará automáticamente todas las dependencias desde fuente. Ver [do
 
 **Error: Perl not found (Windows)**
 - Instala Git for Windows: https://git-scm.com/download/win
-- Asegúrate de que está en PATH
+- Git for Windows incluye perl, bash y make necesarios
+- Después de instalar, reinicia PowerShell
 
 **Error: Bash not found (Windows)**
-- Instala Git for Windows (incluye bash): https://git-scm.com/download/win
+- Instala Git for Windows: https://git-scm.com/download/win
+- Incluye bash necesario para ejecutar scripts de compilación
+- Alternativamente, usa WSL: `wsl --install`
 
 **Error en scripts de compilación**
 - Verifica que los scripts tienen permisos de ejecución (Linux/macOS): `chmod +x scripts/shell/*.sh`
 - En Windows, ejecuta PowerShell como Administrador si hay problemas de permisos
+
+**Quieres más detalles?**
+- Ejecuta con modo verbose: `.\scripts\powershell\build-complete.ps1 -Verbose`
+- Revisa el log: `build.log`
+- Consulta: [docs/BUILD_ARCHITECTURE.md](docs/BUILD_ARCHITECTURE.md) para guía completa de debugging
 
 ## Estructura del proyecto
 
@@ -353,7 +362,8 @@ F-Droid compilará automáticamente todas las dependencias desde fuente. Ver [do
 
 ## 📚 Documentación Adicional
 
-- [REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) - **Requisitos y guía para compilar en Windows**
+- [BUILD_ARCHITECTURE.md](docs/BUILD_ARCHITECTURE.md) - **Arquitectura del sistema de compilación** (PowerShell orchestrator pattern)
+- [REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) - Requisitos y guía para compilar en Windows
 - [BUILD_NATIVE_DEPENDENCIES.md](docs/BUILD_NATIVE_DEPENDENCIES.md) - Guía detallada de compilación de dependencias nativas
 - [FDROID_COMPLIANCE.md](docs/FDROID_COMPLIANCE.md) - Verificación de cumplimiento con políticas de F-Droid
 - [ESTRUCTURA_REPOSITORIO.md](docs/ESTRUCTURA_REPOSITORIO.md) - Estructura y organización del repositorio
