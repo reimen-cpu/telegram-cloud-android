@@ -211,15 +211,28 @@ Después de instalar, reiniciar PowerShell y ejecutar este script nuevamente.
 "@
     }
     
-    # Verify NDK compiler is accessible
-    $ndkCompiler = Join-Path $ndkToolchain "bin\aarch64-linux-android$api-clang.cmd"
-    if ($abi -eq "armeabi-v7a") {
-        $ndkCompiler = Join-Path $ndkToolchain "bin\armv7a-linux-androideabi$api-clang.cmd"
+    # Configure NDK environment variables for OpenSSL
+    # NDK r21+ uses clang, not gcc. OpenSSL needs explicit CC/AR/RANLIB.
+    $target = switch ($abi) {
+        "arm64-v8a" { "aarch64-linux-android" }
+        "armeabi-v7a" { "armv7a-linux-androideabi" }
+        "x86" { "i686-linux-android" }
+        "x86_64" { "x86_64-linux-android" }
     }
-    if (-not (Test-Path $ndkCompiler)) {
-        throw "NDK compiler not found: $ndkCompiler`nVerify NDK installation and PATH configuration."
+    
+    # Set compiler environment variables (OpenSSL Configure reads these)
+    $env:CC = Join-Path $ndkBinPath "$target$api-clang.cmd"
+    $env:CXX = Join-Path $ndkBinPath "$target$api-clang++.cmd"
+    $env:AR = Join-Path $ndkBinPath "llvm-ar.exe"
+    $env:RANLIB = Join-Path $ndkBinPath "llvm-ranlib.exe"
+    
+    # Verify compiler exists
+    if (-not (Test-Path $env:CC)) {
+        throw "NDK compiler not found: $env:CC`nVerify NDK installation."
     }
-    Write-Host "✓ NDK compiler: $(Split-Path -Leaf $ndkCompiler)"
+    Write-Host "✓ NDK compiler configurado"
+    Write-Host "  CC: $(Split-Path -Leaf $env:CC)"
+    Write-Host "  AR: $(Split-Path -Leaf $env:AR)"
     
     # Configure OpenSSL with correct parameters
     # Use forward slashes for Unix-style paths (OpenSSL expects this)
