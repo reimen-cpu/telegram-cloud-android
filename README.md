@@ -214,6 +214,9 @@ chmod +x android/gradlew
 # Compilar
 cd android
 ./gradlew assembleDebug
+
+```
+
 La APK aparecerá en: android/app/build/outputs/apk/debug/app-debug.apk
 📁 Estructura del Proyecto
 code
