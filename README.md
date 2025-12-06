@@ -41,11 +41,11 @@ Aplicación Android para gestionar archivos en la nube usando Telegram como back
 ### Para Compilar desde Código Fuente
 
 - **Android SDK** con API 28+
-- **Android NDK** (recomendado r25c o r26)
+- **Android NDK** (Versión probada: **r25c** / `25.2.9519653`)
 - **CMake 3.22+**
 - **Gradle 8.0+**
-- **Linux/macOS** para compilar dependencias nativas (OpenSSL, libcurl, SQLCipher)
-- **Perl** (requerido para OpenSSL)
+- **Linux/WSL** (Recomendado Ubuntu 22.04+)
+- **Paquetes del sistema**: `git`, `wget`, `tar`, `perl`, `build-essential`, `tcl`, `dos2unix`
 
 ## 📦 Instalación
 
@@ -57,7 +57,7 @@ Aplicación Android para gestionar archivos en la nube usando Telegram como back
 
 ### Opción 2: Compilar desde Código Fuente
 
-Ver sección [Compilación](#-compilación) más abajo.
+Ver sección [Compilación Manual](#-compilación-manual) más abajo.
 
 ## ⚙️ Configuración Inicial
 
@@ -66,240 +66,187 @@ Ver sección [Compilación](#-compilación) más abajo.
    - Envía `/newbot` y sigue las instrucciones
    - Guarda el token del bot
 
-2. **Configurar el Bot** (opcional pero recomendado):
-   - Envía `/setprivacy` a BotFather
-   - Selecciona tu bot
-   - Elige `Disable` para permitir que el bot acceda a todos los mensajes
-
-3. **Crear un Canal** (opcional):
-   - Crea un canal privado en Telegram
-   - Agrega tu bot como administrador con permisos de envío
-   - Obtén el ID del canal (puedes usar [@userinfobot](https://t.me/userinfobot))
-
-4. **Configurar la Aplicación**:
+2. **Configurar la Aplicación**:
    - Abre Telegram Cloud Android
    - Ingresa el token del bot
    - Ingresa el ID del canal (opcional)
    - Guarda la configuración
 
-## 🎯 Uso Básico
+## 🔨 Compilación Manual
 
-### Subir Archivos
+⚠️ **Nota:** Los scripts automáticos (`build-complete.sh`) se encuentran en desarrollo. Para garantizar una compilación exitosa sin errores de dependencias, sigue este procedimiento manual paso a paso.
 
-1. Toca el botón de subida en la pantalla principal
-2. Selecciona uno o múltiples archivos
-3. Los archivos se subirán automáticamente a Telegram
-4. Archivos grandes (>4MB) se dividen automáticamente en fragmentos
+### 1. Configurar Entorno
 
-### Descargar Archivos
-
-1. Toca cualquier archivo en la lista
-2. Selecciona "Descargar"
-3. El archivo se descargará a tu carpeta de Descargas
-
-### Sincronizar Galería
-
-1. Ve a la sección "Galería"
-2. Toca "Escanear medios" para encontrar fotos y videos
-3. Toca "Sincronizar todo" para subir todos los medios a Telegram
-
-### Compartir Archivos
-
-1. Selecciona uno o múltiples archivos
-2. Toca "Compartir"
-3. Define una contraseña
-4. Se generará un archivo `.link` que puedes compartir
-5. Otros usuarios pueden descargar usando el archivo `.link` y la contraseña
-
-### Crear Backup
-
-1. Ve a Configuración
-2. Toca "Crear backup"
-3. Define una contraseña
-4. El backup se guardará en tu carpeta de Descargas
-
-## 🔨 Compilación
-
-### Compilación Completa (Linux/macOS)
-
-El script `build-complete.sh` automatiza todo el proceso:
+Instala las herramientas necesarias y define las variables de entorno. Ajusta `ANDROID_NDK_HOME` según tu instalación real.
 
 ```bash
-# 1. Clonar el repositorio
-git clone https://github.com/reimen-cpu/telegram-cloud-android.git
-cd telegram-cloud-android
+# Instalar dependencias del sistema (Ubuntu/Debian/WSL)
+sudo apt-get update
+sudo apt-get install -y git wget tar perl build-essential tcl dos2unix
 
-# 2. Ejecutar script de compilación completa
-./scripts/shell/build-complete.sh
-```
-
-El script:
-- Verifica herramientas necesarias
-- Detecta Android NDK automáticamente
-- Descarga dependencias (OpenSSL, libcurl, SQLCipher)
-- Compila dependencias nativas para arm64-v8a y armeabi-v7a
-- Compila la APK con Gradle
-
-### Compilación Manual
-
-#### 1. Configurar Variables de Entorno
-
-```bash
-export ANDROID_NDK_HOME="$HOME/android-sdk/ndk/26.3.11579264"
+# Definir variables (Ajusta la versión del NDK si es diferente)
 export ANDROID_HOME="$HOME/android-sdk"
+export ANDROID_NDK_HOME="$HOME/android-sdk/ndk/25.2.9519653"
 export API=28
-export ABIS="arm64-v8a armeabi-v7a"
-```
+2. Crear Wrapper para CMake
+Este paso es crítico. Crea un "wrapper" que intercepta las llamadas a CMake para inyectar las rutas de OpenSSL y corregir flags incompatibles con Ninja (como -j vacío).
+code
+Bash
+mkdir -p "$HOME/cmake-wrap"
+cat > "$HOME/cmake-wrap/cmake" << 'EOF'
+#!/bin/bash
+# Wrapper para corregir compilación en Android NDK
 
-#### 2. Descargar Dependencias
+for arg in "$@"; do
+  # Corregir error de Ninja: "-j" vacío -> "-jN"
+  if [ "$arg" = "--build" ]; then
+    exec /usr/bin/cmake --build . -- -j$(nproc)
+  fi
+  # Corregir error de Ninja: "--config Release" no soportado
+  if [ "$arg" = "--install" ]; then
+    exec /usr/bin/cmake --install .
+  fi
+done
 
-```bash
-./scripts/shell/setup-dependencies.sh
-```
+# Inyectar rutas de OpenSSL y forzar librerías estáticas
+exec /usr/bin/cmake \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DCMAKE_INSTALL_LIBDIR=lib \
+  -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR" \
+  -DOPENSSL_INCLUDE_DIR="$OPENSSL_ROOT_DIR/include" \
+  -DOPENSSL_CRYPTO_LIBRARY="$OPENSSL_ROOT_DIR/lib/libcrypto.a" \
+  -DOPENSSL_SSL_LIBRARY="$OPENSSL_ROOT_DIR/lib/libssl.a" \
+  "$@"
+EOF
 
-#### 3. Compilar Dependencias Nativas
+chmod +x "$HOME/cmake-wrap/cmake"
+export PATH="$HOME/cmake-wrap:$PATH"
+3. Descargar y Preparar Código Fuente
+Descargamos las dependencias y preparamos SQLCipher manualmente (generando la amalgamación y el archivo CMakeLists.txt).
+code
+Bash
+mkdir -p $HOME/android-native-sources
+cd $HOME/android-native-sources
 
-```bash
-# Para cada ABI
+# --- Descargar ---
+wget https://www.openssl.org/source/openssl-3.2.0.tar.gz && tar xf openssl-3.2.0.tar.gz
+wget https://curl.se/download/curl-8.7.1.tar.gz && tar xf curl-8.7.1.tar.gz
+git clone https://github.com/sqlcipher/sqlcipher.git
+
+# --- Preparar SQLCipher ---
+cd sqlcipher
+./configure
+make sqlite3.c
+
+# Crear CMakeLists.txt para SQLCipher
+cat > CMakeLists.txt << 'EOF'
+cmake_minimum_required(VERSION 3.22)
+project(sqlcipher C)
+find_package(OpenSSL REQUIRED)
+add_library(sqlcipher STATIC sqlite3.c)
+target_include_directories(sqlcipher PUBLIC ${OPENSSL_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(sqlcipher PRIVATE
+    -DSQLITE_HAS_CODEC -DSQLITE_TEMP_STORE=2 -DSQLITE_ENABLE_JSON1
+    -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_FTS5
+    -DSQLITE_ENABLE_RTREE -DSQLCIPHER_CRYPTO_OPENSSL -DANDROID
+    -DSQLITE_EXTRA_INIT=sqlcipher_extra_init
+    -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown
+)
+target_link_libraries(sqlcipher Private OpenSSL::Crypto)
+install(TARGETS sqlcipher ARCHIVE DESTINATION lib)
+install(FILES sqlite3.h DESTINATION include)
+EOF
+4. Compilar Dependencias Nativas
+Regresa a la raíz del repositorio (cd ~/ruta/al/repo) y ejecuta este bloque. Compilará OpenSSL, Libcurl y SQLCipher para arm64-v8a y armeabi-v7a.
+Nota: Se aplica no-asm para ARMv7 para evitar errores de relocación.
+code
+Bash
+mkdir -p $HOME/android-native-builds/{openssl,libcurl,sqlcipher}
+
 for ABI in arm64-v8a armeabi-v7a; do
-  # OpenSSL
+  echo ">>> Compilando para $ABI..."
+  
+  # Configurar flags específicos por arquitectura
+  OPENSSL_OPTS=""
+  if [ "$ABI" == "armeabi-v7a" ]; then
+      OPENSSL_OPTS="no-asm" # Fix para error R_ARM_REL32
+  fi
+
+  # 1. OpenSSL
+  # Modificamos script al vuelo para inyectar opciones si es necesario
+  sed -i "s|./Configure|./Configure $OPENSSL_OPTS -fPIC|g" telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh
+  
   ./telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh \
-    -ndk "$ANDROID_NDK_HOME" \
-    -abi "$ABI" \
-    -api 28 \
+    -ndk "$ANDROID_NDK_HOME" -abi "$ABI" -api "$API" \
     -srcPath "$HOME/android-native-sources/openssl-3.2.0" \
     -outDir "$HOME/android-native-builds/openssl"
 
-  # libcurl
+  # Configurar entorno para el wrapper de CMake
+  export OPENSSL_ROOT_DIR="$HOME/android-native-builds/openssl/build_${ABI}/installed"
+  
+  # 2. Libcurl
   ./telegram-cloud-cpp/third_party/android_build_scripts/build_libcurl_android.sh \
-    -ndk "$ANDROID_NDK_HOME" \
-    -abi "$ABI" \
-    -api 28 \
-    -opensslDir "$HOME/android-native-builds/openssl/build_${ABI//-/_}/installed" \
+    -ndk "$ANDROID_NDK_HOME" -abi "$ABI" -api "$API" \
+    -opensslDir "$OPENSSL_ROOT_DIR" \
     -srcPath "$HOME/android-native-sources/curl-8.7.1" \
     -outDir "$HOME/android-native-builds/libcurl"
 
-  # SQLCipher
+  # Fix: Mover librería si quedó en lib64
+  if [ -f "$HOME/android-native-builds/libcurl/build_${ABI}/installed/lib64/libcurl.a" ]; then
+      mkdir -p "$HOME/android-native-builds/libcurl/build_${ABI}/installed/lib"
+      cp "$HOME/android-native-builds/libcurl/build_${ABI}/installed/lib64/libcurl.a" \
+         "$HOME/android-native-builds/libcurl/build_${ABI}/installed/lib/"
+  fi
+
+  # 3. SQLCipher
   ./telegram-cloud-cpp/third_party/android_build_scripts/build_sqlcipher_android.sh \
-    -ndk "$ANDROID_NDK_HOME" \
-    -abi "$ABI" \
-    -api 28 \
-    -opensslDir "$HOME/android-native-builds/openssl/build_${ABI//-/_}/installed" \
+    -ndk "$ANDROID_NDK_HOME" -abi "$ABI" -api "$API" \
+    -opensslDir "$OPENSSL_ROOT_DIR" \
     -srcPath "$HOME/android-native-sources/sqlcipher" \
     -outDir "$HOME/android-native-builds/sqlcipher"
 done
-```
+5. Compilar APK con Gradle
+Finalmente, configura el proyecto Android y genera la APK.
+code
+Bash
+# 1. Crear local.properties con rutas absolutas
+cat > android/local.properties <<EOF
+sdk.dir=$ANDROID_HOME
+ndk.dir=$ANDROID_NDK_HOME
+native.openssl.arm64-v8a=$HOME/android-native-builds/openssl/build_arm64_v8a/installed
+native.curl.arm64-v8a=$HOME/android-native-builds/libcurl/build_arm64_v8a/installed
+native.sqlcipher.arm64-v8a=$HOME/android-native-builds/sqlcipher/build_arm64_v8a/installed
+native.openssl.armeabi-v7a=$HOME/android-native-builds/openssl/build_armeabi_v7a/installed
+native.curl.armeabi-v7a=$HOME/android-native-builds/libcurl/build_armeabi_v7a/installed
+native.sqlcipher.armeabi-v7a=$HOME/android-native-builds/sqlcipher/build_armeabi_v7a/installed
+EOF
 
-#### 4. Configurar local.properties
+# 2. Corregir formato de gradlew (si usas WSL)
+dos2unix android/gradlew
+chmod +x android/gradlew
 
-```properties
-sdk.dir=/ruta/a/android-sdk
-ndk.dir=/ruta/a/android-sdk/ndk/26.3.11579264
-native.openssl.arm64-v8a=/ruta/a/android-native-builds/openssl/build_arm64_v8a/installed
-native.curl.arm64-v8a=/ruta/a/android-native-builds/libcurl/build_arm64_v8a/installed
-native.sqlcipher.arm64-v8a=/ruta/a/android-native-builds/sqlcipher/build_arm64_v8a/installed
-native.openssl.armeabi-v7a=/ruta/a/android-native-builds/openssl/build_armeabi_v7a/installed
-native.curl.armeabi-v7a=/ruta/a/android-native-builds/libcurl/build_armeabi_v7a/installed
-native.sqlcipher.armeabi-v7a=/ruta/a/android-native-builds/sqlcipher/build_armeabi_v7a/installed
-```
-
-#### 5. Compilar APK
-
-```bash
+# 3. Compilar
 cd android
-./gradlew assembleDebug    # Para APK de depuración
-./gradlew assembleRelease  # Para APK de release (requiere keystore)
-```
-
-### Compilación en Windows
-
-Ver [docs/REQUISITOS_WINDOWS.md](docs/REQUISITOS_WINDOWS.md) para instrucciones específicas de Windows.
-
-## 📁 Estructura del Proyecto
-
-```
+./gradlew assembleDebug
+La APK generada estará en: android/app/build/outputs/apk/debug/app-debug.apk
+📁 Estructura del Proyecto
+code
+Code
 telegram-cloud-android/
 ├── README.md                      # Este archivo
-├── CHANGELOG.md                   # Historial de cambios
-├── LICENSE                        # Licencia GPL v3
-├── metadata.yml                   # Metadatos para F-Droid
-│
-├── docs/                          # Documentación
-│   ├── BUILD_NATIVE_DEPENDENCIES.md
-│   ├── BUILD_ARCHITECTURE.md
-│   ├── FDROID_COMPLIANCE.md
-│   ├── REQUISITOS_WINDOWS.md
-│   └── ...
-│
-├── scripts/                       # Scripts de automatización
-│   ├── shell/
-│   │   ├── setup-dependencies.sh
-│   │   └── build-complete.sh
-│   └── powershell/
-│       ├── setup-dependencies.ps1
-│       └── build-complete.ps1
-│
-├── android/                       # Proyecto Android
-│   ├── app/
-│   │   ├── src/main/java/        # Código Kotlin
-│   │   └── src/main/res/         # Recursos Android
-│   └── build.gradle.kts
-│
-└── telegram-cloud-cpp/            # Core nativo C++
-    ├── include/                   # Headers C++
-    ├── src/                       # Código fuente C++
-    ├── android_jni/               # JNI bindings
-    └── third_party/
-        └── android_build_scripts/ # Scripts de compilación nativa
-```
-
-## 🏗️ Arquitectura
-
-- **Frontend**: Android (Kotlin + Jetpack Compose)
-- **Backend**: C++ nativo compartido con versión desktop
-- **Comunicación**: JNI para interacción entre Kotlin y C++
-- **Almacenamiento**: SQLCipher (base de datos cifrada)
-- **Red**: libcurl con OpenSSL
-- **Sincronización**: WorkManager para operaciones en segundo plano
-
-## 🔒 Seguridad
-
-- **Base de datos cifrada**: SQLCipher con clave derivada de credenciales
-- **Almacenamiento seguro**: DataStore para tokens y configuración
-- **Backups protegidos**: Archivos ZIP cifrados con contraseña
-- **Enlaces protegidos**: Archivos `.link` requieren contraseña para descargar
-- **Sin servicios externos**: Todo se almacena en tus propios canales/chats de Telegram
-
-## 🤝 Contribuir
-
-Las contribuciones son bienvenidas. Por favor:
-
-1. Fork el repositorio
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
-## 📝 Licencia
-
-Este proyecto está licenciado bajo la **GNU General Public License v3.0** - ver el archivo [LICENSE](LICENSE) para más detalles.
-
-## 🔗 Enlaces
-
-- **Repositorio**: [https://github.com/reimen-cpu/telegram-cloud-android](https://github.com/reimen-cpu/telegram-cloud-android)
-- **Releases**: [https://github.com/reimen-cpu/telegram-cloud-android/releases](https://github.com/reimen-cpu/telegram-cloud-android/releases)
-- **Issues**: [https://github.com/reimen-cpu/telegram-cloud-android/issues](https://github.com/reimen-cpu/telegram-cloud-android/issues)
-- **Autor**: [Reimen Torres](https://github.com/reimen-cpu)
-
-## ⚠️ Notas Importantes
-
-- Esta aplicación utiliza la API de Telegram Bot para almacenar archivos
-- Los archivos se almacenan en tus propios canales/chats de Telegram
-- **No hay límites de tamaño de archivo ni de almacenamiento** gracias a la subida por fragmentos
-- La aplicación no depende de servicios propietarios
-- Todas las dependencias son de código abierto
-- Compatible con F-Droid (ver [docs/FDROID_COMPLIANCE.md](docs/FDROID_COMPLIANCE.md))
-
----
-
-**Tu nube, tus reglas.** 🚀
+├── scripts/                       # Scripts experimentales
+├── android/                       # Proyecto Android (Kotlin)
+├── telegram-cloud-cpp/            # Core nativo (C++)
+│   ├── src/                       # Lógica compartida
+│   └── third_party/               # Scripts de dependencias
+🏗️ Arquitectura
+Frontend: Android (Kotlin + Jetpack Compose)
+Backend: C++ nativo compartido
+Seguridad: SQLCipher + OpenSSL
+Red: Libcurl optimizado con HTTP/2
+🤝 Contribuir
+Las contribuciones son bienvenidas. Haz Fork, crea una rama y envía tu Pull Request.
+📝 Licencia
+GNU General Public License v3.0 - ver LICENSE.
+Tu nube, tus reglas. 🚀
