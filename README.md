@@ -63,16 +63,21 @@ Instala las herramientas necesarias y configura las rutas. Ajusta `ANDROID_NDK_H
 # Instalar dependencias del sistema
 sudo apt-get update
 sudo apt-get install -y git wget tar perl build-essential tcl dos2unix
+```
 
 # Configurar variables (Ajusta la ruta del NDK según tu instalación)
+
+```bash
 export ANDROID_HOME="$HOME/android-sdk"
 export ANDROID_NDK_HOME="$HOME/android-sdk/ndk/25.2.9519653"
 export API=28
+```
+
 2. Crear Wrapper para CMake
 Este paso es necesario para inyectar configuraciones que los scripts originales no contemplan (como rutas de OpenSSL estáticas y correcciones para Ninja).
 Copia y pega este bloque completo en tu terminal:
-code
-Bash
+
+```bash
 mkdir -p "$HOME/cmake-wrap"
 
 cat > "$HOME/cmake-wrap/cmake" << 'EOF'
@@ -119,9 +124,11 @@ git clone https://github.com/sqlcipher/sqlcipher.git
 cd sqlcipher
 ./configure
 make sqlite3.c
+```
+
 Ahora creamos el archivo de configuración CMakeLists.txt que SQLCipher necesita:
-code
-Bash
+
+```bash
 cat > CMakeLists.txt << 'EOF'
 cmake_minimum_required(VERSION 3.22)
 project(sqlcipher C)
@@ -139,17 +146,21 @@ target_link_libraries(sqlcipher Private OpenSSL::Crypto)
 install(TARGETS sqlcipher ARCHIVE DESTINATION lib)
 install(FILES sqlite3.h DESTINATION include)
 EOF
+```
+
 4. Parchear Scripts de Compilación
 Para evitar errores en dispositivos antiguos (ARMv7), debemos desactivar el ensamblador en OpenSSL. Modificamos el script original para permitir inyección de opciones.
-code
-Bash
+
+```bash
 cd ~/prueba-github  # Vuelve a la raíz del proyecto
 
 sed -i "s|./Configure|./Configure \$OPENSSL_OPTS -fPIC|g" telegram-cloud-cpp/third_party/android_build_scripts/build_openssl_android.sh
+```
+
 5. Compilar Librerías Nativas
 Ejecuta este bloque para compilar OpenSSL, Libcurl y SQLCipher para ambas arquitecturas (arm64-v8a y armeabi-v7a).
-code
-Bash
+
+```bash
 mkdir -p $HOME/android-native-builds/{openssl,libcurl,sqlcipher}
 
 for ABI in arm64-v8a armeabi-v7a; do
@@ -191,10 +202,12 @@ for ABI in arm64-v8a armeabi-v7a; do
     -srcPath "$HOME/android-native-sources/sqlcipher" \
     -outDir "$HOME/android-native-builds/sqlcipher"
 done
+```
+
 6. Generar APK
 Configura Gradle con las rutas exactas de las librerías compiladas y genera la aplicación.
-code
-Bash
+
+```bash
 # Crear archivo de propiedades local
 cat > android/local.properties <<EOF
 sdk.dir=$ANDROID_HOME
