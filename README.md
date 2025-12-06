@@ -218,20 +218,28 @@ cd android
 ```
 
 
-
 La APK aparecerá en: android/app/build/outputs/apk/debug/app-debug.apk
+
 📁 Estructura del Proyecto
-code
-Code
+
+```bash
 telegram-cloud-android/
 ├── README.md                      # Instrucciones
 ├── android/                       # Aplicación Android (Kotlin)
 ├── telegram-cloud-cpp/            # Núcleo nativo (C++)
 └── scripts/                       # Scripts (Experimental)
+```
+
 🤝 Contribuir
+
 Haz Fork del repositorio.
+
 Crea una rama (git checkout -b feature/NuevaFeature).
 Envía un Pull Request.
+
 📝 Licencia
+
 GNU General Public License v3.0 - ver archivo LICENSE.
+
 Tu nube, tus reglas. 🚀
+
