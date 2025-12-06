@@ -108,10 +108,12 @@ EOF
 
 chmod +x "$HOME/cmake-wrap/cmake"
 export PATH="$HOME/cmake-wrap:$PATH"
+```
+
 3. Descargar y Preparar Código Fuente
 Descarga las librerías y prepara SQLCipher (que requiere un paso manual de generación de código).
-code
-Bash
+
+```bash
 mkdir -p $HOME/android-native-sources
 cd $HOME/android-native-sources
 
