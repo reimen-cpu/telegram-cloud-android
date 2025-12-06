@@ -217,6 +217,8 @@ cd android
 
 ```
 
+
+
 La APK aparecerá en: android/app/build/outputs/apk/debug/app-debug.apk
 📁 Estructura del Proyecto
 code
